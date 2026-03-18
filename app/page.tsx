@@ -1,27 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FiSearch, FiTrendingUp } from "react-icons/fi";
 
 export default function Home() {
   const [ticker, setTicker] = useState("");
-  // --- Mouse Tracking Logic ---
-  // useState כדי לשמור את מיקום העכבר
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  
+  // --- Mouse Tracking Logic (The Pro Way!) ---
+  // במקום useState שמרענן את כל האתר, משתמשים ב-Ref שמדבר ישירות עם האלמנט
+  const glowRef = useRef<HTMLDivElement>(null);
 
-  // useEffect כדי להוסיף מאזין אירועים לתנועת העכבר
   useEffect(() => {
-    const handleMouseMove = (event) => {
-      setMousePosition({ x: event.clientX, y: event.clientY });
+    const handleMouseMove = (event: MouseEvent) => {
+      if (glowRef.current) {
+        // translate3d מפעיל את כרטיס המסך (Hardware Acceleration) לתנועה חלקה באמת
+        glowRef.current.style.transform = `translate3d(${event.clientX - 150}px, ${event.clientY - 150}px, 0)`;
+      }
     };
     window.addEventListener("mousemove", handleMouseMove);
 
-    // ניקוי המאזין כשהקומפוננטה נסגרת
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
     };
   }, []);
-  // -----------------------------
+  // -------------------------------------------
 
   const handleSearch = () => {
     if (!ticker) return;
@@ -30,7 +32,7 @@ export default function Home() {
 
   return (
     <>
-      {/* הזרקת CSS ישירה לשמירה על האנימציה ברקע */}
+      {/* הזרקת CSS לאנימציית הרקע שעובדת לנו */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes superFloat {
           0% { transform: translate(0px, 0px) scale(1); }
@@ -49,12 +51,10 @@ export default function Home() {
       <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6 relative overflow-hidden font-sans">
         
         {/* --- CURSOR FOLLOW EFFECT --- */}
-        {/* עיגול המעקב החדש. שימוש ב-fixed, pointer-events-none ו-backdrop-blur למראה יוקרתי */}
+        {/* העיגול העוקב עם useRef - עכשיו הוא לא תוקע שום דבר */}
         <div
-          className="pointer-events-none fixed z-50 h-[300px] w-[300px] rounded-full bg-gradient-to-r from-blue-600/10 to-indigo-600/10 blur-[100px] transition-transform duration-100 ease-out"
-          style={{
-            transform: `translate(${mousePosition.x - 150}px, ${mousePosition.y - 150}px)`,
-          }}
+          ref={glowRef}
+          className="pointer-events-none fixed top-0 left-0 z-50 h-[300px] w-[300px] rounded-full bg-gradient-to-r from-blue-600/15 to-indigo-600/15 blur-[80px] transition-transform duration-75 ease-out"
         ></div>
 
         {/* --- BACKGROUND ANIMATIONS --- */}
@@ -78,7 +78,7 @@ export default function Home() {
           <div className="relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
             
-            <div className="relative flex items-center bg-[#111] border border-white/10 rounded-2xl p-2 focus-within:border-blue-500/50 transition-all shadow-2xl">
+            <div className="relative flex items-center bg-[#111] border border-white/10 rounded-2xl p-2 focus-within:border-blue-500/50 transition-all shadow-2xl hover:border-white/20">
               <div className="pl-4 text-gray-500">
                 <FiSearch size={24} />
               </div>
@@ -102,10 +102,11 @@ export default function Home() {
 
           {/* --- FOOTER STATS WITH ANIMATED DOTS --- */}
           <div className="mt-12 flex justify-center items-center gap-8 text-[10px] font-bold text-gray-600 uppercase tracking-[0.3em]">
+            {/* שיניתי את NYSE לכתום (orange/amber) */}
             <div className="flex items-center gap-2">
               <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
               </span>
               NYSE
             </div>
