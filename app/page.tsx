@@ -15,22 +15,7 @@ export default function Home() {
     <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6 relative overflow-hidden font-sans">
       
       {/* --- BACKGROUND ANIMATIONS --- */}
-      <style jsx>{`
-        @keyframes float {
-          0% { transform: translate(0px, 0px) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-          100% { transform: translate(0px, 0px) scale(1); }
-        }
-        .animate-blob {
-          animation: float 8s infinite alternate ease-in-out;
-        }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-      `}</style>
-
-      {/* העיגולים המקוריים, עכשיו עם מחלקת האנימציה */}
+      {/* העיגולים המקוריים שקוראים עכשיו למחלקות מקובץ ה-CSS הגלובלי */}
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none animate-blob"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none animate-blob animation-delay-2000"></div>
 
