@@ -204,10 +204,14 @@ const isNumber = (value: unknown): value is number =>
 const average = (values: number[]) =>
   values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
+// תוקן באג פוטנציאלי לטיפול ב-NaN בערכים ריקים
 const clamp = (value: number, min = 0, max = 100) =>
-  Math.min(max, Math.max(min, value));
+  Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min;
 
-const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+const toIsoDate = (date: Date) => {
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
+};
 
 const cleanSymbol = (symbol: string) =>
   symbol.replace("BINANCE:", "").replace("COINBASE:", "").replace("OANDA:", "");
@@ -659,17 +663,19 @@ function ProgressBar({ label, value, tone = "blue" }: ProgressBarProps) {
     violet: "bg-violet-500",
     amber: "bg-amber-500",
   };
+  
+  const safeValue = Number.isFinite(value) ? value : 0;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-4 text-xs text-gray-400 font-semibold">
         <span>{label}</span>
-        <span>{Math.round(clamp(value))}/100</span>
+        <span>{Math.round(clamp(safeValue))}/100</span>
       </div>
       <div className="h-2.5 rounded-full bg-white/5 border border-white/10 overflow-hidden">
         <div
           className={`h-full rounded-full ${toneMap[tone]}`}
-          style={{ width: `${clamp(value)}%` }}
+          style={{ width: `${clamp(safeValue)}%` }}
         />
       </div>
     </div>
@@ -1057,8 +1063,12 @@ export default function Home() {
       const assetType = getAssetType(resolvedSymbol);
       const now = Math.floor(Date.now() / 1000);
       const from = now - 60 * 60 * 24 * 420;
-      const newsFrom = toIsoDate(new Date(Date.now() - 1000 * 60 * 60 * 24 * 21));
-      const newsTo = toIsoDate(new Date());
+      
+      const newsFromDate = new Date(Date.now() - 1000 * 60 * 60 * 24 * 21);
+      const newsFrom = Number.isNaN(newsFromDate.getTime()) ? "" : newsFromDate.toISOString().slice(0, 10);
+      const newsToDate = new Date();
+      const newsTo = Number.isNaN(newsToDate.getTime()) ? "" : newsToDate.toISOString().slice(0, 10);
+      
       const candleEndpoint = getCandleEndpoint(resolvedSymbol);
 
       const [
@@ -1300,9 +1310,12 @@ export default function Home() {
         (isNumber(atrPct) ? atrPct * 4 : 0)
     );
 
-    const compositeScore = clamp(
+    let compositeScore = clamp(
       trendMeter * 0.35 + momentumMeter * 0.3 + sentimentMeter * 0.2 + stabilityMeter * 0.15
     );
+    
+    // הגנה אחרונה לחישוב הקומפוזיט
+    if (!Number.isFinite(compositeScore)) compositeScore = 50;
 
     const signal = getSignalFromScore(compositeScore);
 
@@ -1479,7 +1492,7 @@ export default function Home() {
                   value={ticker}
                   onChange={handleInputChange}
                   onFocus={() => ticker.length >= 1 && suggestions.length > 0 && setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   className="w-full bg-transparent px-4 py-4 text-lg md:text-xl outline-none placeholder:text-gray-600 font-medium tracking-wide"
                 />
@@ -2282,7 +2295,7 @@ export default function Home() {
                     <MetricCard
                       label="ATR (14)"
                       value={isNumber(analysis.atr14) ? formatPrice(analysis.atr14, analysis.assetType) : "Insufficient history"}
-                      hint={isNumber(analysis.atrPct) ? `${analysis.atrPct.toFixed(2)}% of spot` : "Average true range"}
+                      hint={isNumber(analysis.atrPct) ? `${analysis.atrPct.toFixed(2)}% of spot price` : "Average true range"}
                       accent="amber"
                     />
                     <MetricCard
@@ -2525,7 +2538,7 @@ export default function Home() {
                       >
                         {earningsData.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {earningsData.map((item, index) => {
+                            {earningsData.slice(0, 4).map((item, index) => {
                               const surpriseValue = isNumber(item.surprisePercent)
                                 ? item.surprisePercent
                                 : percentDiffFrom(item.actual ?? null, item.estimate ?? null);
