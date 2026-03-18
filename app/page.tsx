@@ -6,15 +6,19 @@ import { FiSearch, FiTrendingUp } from "react-icons/fi";
 export default function Home() {
   const [ticker, setTicker] = useState("");
   
-  // הרפרנס לעיגול שעוקב
+  // רפרנסים לעיגול הראשי ולשובלים
   const glowRef = useRef<HTMLDivElement>(null);
+  const trail1Ref = useRef<HTMLDivElement>(null);
+  const trail2Ref = useRef<HTMLDivElement>(null);
 
-  // הפונקציה שנקראת בכל פעם שהעכבר זז על המסך
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
-    if (glowRef.current) {
-      // מזיז את העיגול בצורה הכי חלקה שיש בלי לרענן את האתר
-      glowRef.current.style.transform = `translate(${e.clientX - 150}px, ${e.clientY - 150}px)`;
-    }
+    const x = e.clientX;
+    const y = e.clientY;
+
+    // מזיז את כולם לאותה נקודה, אבל ה-CSS ייצור את השובל בזכות המהירויות השונות
+    if (glowRef.current) glowRef.current.style.transform = `translate(${x - 150}px, ${y - 150}px)`;
+    if (trail1Ref.current) trail1Ref.current.style.transform = `translate(${x - 60}px, ${y - 60}px)`;
+    if (trail2Ref.current) trail2Ref.current.style.transform = `translate(${x - 30}px, ${y - 30}px)`;
   };
 
   const handleSearch = () => {
@@ -24,7 +28,6 @@ export default function Home() {
 
   return (
     <>
-      {/* אנימציות הרקע עוקפות הכל */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes superFloat {
           0% { transform: translate(0px, 0px) scale(1); }
@@ -40,26 +43,39 @@ export default function Home() {
         }
       `}} />
 
-      {/* הוספנו פה onMouseMove שמקשיב לעכבר */}
       <main 
         onMouseMove={handleMouseMove}
         className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6 relative overflow-hidden font-sans"
       >
         
-        {/* --- CURSOR FOLLOW EFFECT --- */}
-        {/* העיגול שזז עם העכבר. הוא מתחיל מחוץ למסך (-300px) כדי שלא יקפוץ פתאום */}
+        {/* --- CURSOR TRAIL EFFECT --- */}
+        {/* העיגול הראשי - גדול, רך ומהיר (duration-75) */}
         <div
           ref={glowRef}
-          className="pointer-events-none fixed top-0 left-0 z-0 h-[300px] w-[300px] rounded-full bg-gradient-to-r from-blue-600/30 to-indigo-600/30 blur-[80px] transition-transform duration-75 ease-out"
-          style={{ transform: 'translate(-300px, -300px)' }}
+          className="pointer-events-none fixed top-0 left-0 z-0 h-[300px] w-[300px] rounded-full bg-gradient-to-r from-blue-600/20 to-indigo-600/20 blur-[80px] transition-transform duration-75 ease-out"
+          style={{ transform: 'translate(-500px, -500px)' }}
         ></div>
+        
+        {/* שובל 1 - בינוני, כחול, טיפה יותר איטי (duration-300) */}
+        <div
+          ref={trail1Ref}
+          className="pointer-events-none fixed top-0 left-0 z-0 h-[120px] w-[120px] rounded-full bg-blue-500/30 blur-[50px] transition-transform duration-300 ease-out"
+          style={{ transform: 'translate(-500px, -500px)' }}
+        ></div>
+
+        {/* שובל 2 - קטן, סגול, הכי איטי שמשאיר את הזנב (duration-500) */}
+        <div
+          ref={trail2Ref}
+          className="pointer-events-none fixed top-0 left-0 z-0 h-[60px] w-[60px] rounded-full bg-indigo-500/40 blur-[30px] transition-transform duration-500 ease-out"
+          style={{ transform: 'translate(-500px, -500px)' }}
+        ></div>
+
 
         {/* --- BACKGROUND ANIMATIONS --- */}
         <div className="absolute top-[5%] left-[10%] z-0 w-[300px] h-[300px] bg-blue-600/40 rounded-full blur-[80px] pointer-events-none force-animate-blob"></div>
         <div className="absolute bottom-[5%] right-[10%] z-0 w-[300px] h-[300px] bg-indigo-600/40 rounded-full blur-[80px] pointer-events-none force-animate-blob force-delay"></div>
 
         {/* --- MAIN CONTENT --- */}
-        {/* z-10 מבטיח שכל התוכן יהיה תמיד מעל האפקטים ולא ייחסם */}
         <div className="max-w-2xl w-full z-10 relative">
           <div className="text-center space-y-4 mb-12">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold tracking-wider uppercase">
@@ -99,7 +115,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* --- FOOTER STATS WITH ANIMATED DOTS --- */}
+          {/* --- FOOTER STATS --- */}
           <div className="mt-12 flex justify-center items-center gap-8 text-[10px] font-bold text-gray-600 uppercase tracking-[0.3em]">
             <div className="flex items-center gap-2">
               <span className="relative flex h-3 w-3">
