@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -76,7 +77,7 @@ type CandleData = {
   o: number[];
   t: number[];
   v: number[];
-  s: string;
+  s?: string;
 };
 
 type RecommendationTrend = {
@@ -185,10 +186,8 @@ const SYMBOL_ALIASES: Record<string, string> = {
   ETH: "BINANCE:ETHUSDT",
   SOL: "BINANCE:SOLUSDT",
   XRP: "BINANCE:XRPUSDT",
-  "EUR/USD": "OANDA:EUR_USD",
   EURUSD: "OANDA:EUR_USD",
   EUR_USD: "OANDA:EUR_USD",
-  "GBP/USD": "OANDA:GBP_USD",
   GBPUSD: "OANDA:GBP_USD",
   GBP_USD: "OANDA:GBP_USD",
   USDJPY: "OANDA:USD_JPY",
@@ -204,14 +203,10 @@ const isNumber = (value: unknown): value is number =>
 const average = (values: number[]) =>
   values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
-// תוקן באג פוטנציאלי לטיפול ב-NaN בערכים ריקים
 const clamp = (value: number, min = 0, max = 100) =>
-  Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min;
+  Math.min(max, Math.max(min, value));
 
-const toIsoDate = (date: Date) => {
-  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
-  return date.toISOString().slice(0, 10);
-};
+const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
 
 const cleanSymbol = (symbol: string) =>
   symbol.replace("BINANCE:", "").replace("COINBASE:", "").replace("OANDA:", "");
@@ -555,7 +550,8 @@ const resolveSearchSymbol = (raw: string) => {
 
   const exactLocal = MARKET_DB.find(
     (item) =>
-      item.symbol.toUpperCase() === normalized || cleanSymbol(item.symbol).toUpperCase() === normalized
+      item.symbol.toUpperCase() === normalized ||
+      cleanSymbol(item.symbol).toUpperCase() === normalized
   );
 
   if (exactLocal) return exactLocal.symbol;
@@ -576,7 +572,7 @@ const normalizeNews = (items?: NewsItem[] | null) => {
       if (!unique.has(key)) unique.set(key, item);
     });
 
-  return Array.from(unique.values()).slice(0, 10);
+  return Array.from(unique.values()).slice(0, 9);
 };
 
 const normalizeEarnings = (items?: EarningsItem[] | null) => {
@@ -601,6 +597,43 @@ async function safeFetchJson<T>(url: string): Promise<T | null> {
   }
 }
 
+async function fetchCandlesWithFallback(symbol: string): Promise<CandleData | null> {
+  const endpoint = getCandleEndpoint(symbol);
+  const now = Math.floor(Date.now() / 1000);
+
+  const attempts =
+    getAssetType(symbol) === "stock"
+      ? [
+          { resolution: "D", days: 720 },
+          { resolution: "D", days: 420 },
+          { resolution: "D", days: 260 },
+          { resolution: "D", days: 120 },
+        ]
+      : [
+          { resolution: "D", days: 365 },
+          { resolution: "D", days: 180 },
+          { resolution: "D", days: 90 },
+        ];
+
+  let best: CandleData | null = null;
+
+  for (const attempt of attempts) {
+    const from = now - attempt.days * 24 * 60 * 60;
+    const url = `https://finnhub.io/api/v1/${endpoint}?symbol=${encodeURIComponent(
+      symbol
+    )}&resolution=${attempt.resolution}&from=${from}&to=${now}&token=${API_KEY}`;
+
+    const data = await safeFetchJson<CandleData>(url);
+
+    if (data?.s === "ok" && Array.isArray(data.c) && data.c.length > 0) {
+      if (!best || data.c.length > (best.c?.length ?? 0)) best = data;
+      if (data.c.length >= 30) return data;
+    }
+  }
+
+  return best;
+}
+
 function SectionCard({
   title,
   subtitle,
@@ -619,7 +652,7 @@ function SectionCard({
             {icon}
             <span className="truncate">{title}</span>
           </p>
-          {subtitle && <p className="mt-2 text-sm text-gray-400 leading-6">{subtitle}</p>}
+          {subtitle && <p className="mt-2 text-sm text-gray-400 leading-7">{subtitle}</p>}
         </div>
         {headerRight}
       </div>
@@ -649,7 +682,7 @@ function MetricCard({
       <p className={`mt-2 text-xl md:text-2xl font-black break-words leading-tight ${accentMap[accent]}`}>
         {value}
       </p>
-      {hint && <p className="mt-2 text-xs text-gray-500 leading-5 break-words">{hint}</p>}
+      {hint && <p className="mt-2 text-xs text-gray-500 leading-6 break-words">{hint}</p>}
     </div>
   );
 }
@@ -663,19 +696,17 @@ function ProgressBar({ label, value, tone = "blue" }: ProgressBarProps) {
     violet: "bg-violet-500",
     amber: "bg-amber-500",
   };
-  
-  const safeValue = Number.isFinite(value) ? value : 0;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-4 text-xs text-gray-400 font-semibold">
         <span>{label}</span>
-        <span>{Math.round(clamp(safeValue))}/100</span>
+        <span>{Math.round(clamp(value))}/100</span>
       </div>
       <div className="h-2.5 rounded-full bg-white/5 border border-white/10 overflow-hidden">
         <div
           className={`h-full rounded-full ${toneMap[tone]}`}
-          style={{ width: `${clamp(safeValue)}%` }}
+          style={{ width: `${clamp(value)}%` }}
         />
       </div>
     </div>
@@ -686,7 +717,7 @@ function EmptyState({ title, description }: EmptyStateProps) {
   return (
     <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-5">
       <p className="text-sm font-bold text-white">{title}</p>
-      <p className="mt-2 text-sm text-gray-400 leading-6">{description}</p>
+      <p className="mt-2 text-sm text-gray-400 leading-7">{description}</p>
     </div>
   );
 }
@@ -739,7 +770,7 @@ function CandlestickChart({ candles, assetType, currentPrice }: CandlestickChart
 
     if (!total) return null;
 
-    const visibleCount = Math.min(42, total);
+    const visibleCount = Math.min(60, total);
     const start = total - visibleCount;
 
     const visible = Array.from({ length: visibleCount }, (_, index) => ({
@@ -773,13 +804,13 @@ function CandlestickChart({ candles, assetType, currentPrice }: CandlestickChart
   if (!chart) {
     return (
       <EmptyState
-        title="Chart data is not available yet"
-        description="I could not build the candlestick view for this symbol. Try another ticker or wait for candles to load."
+        title="Chart data is unavailable right now"
+        description="I could not build the candlestick chart for this symbol at the moment. Try Analyze again in a few seconds."
       />
     );
   }
 
-  const width = 920;
+  const width = 960;
   const height = 330;
   const paddingTop = 18;
   const paddingBottom = 28;
@@ -870,7 +901,7 @@ function CandlestickChart({ candles, assetType, currentPrice }: CandlestickChart
             const lowY = priceToY(candle.low);
 
             const bodyTop = Math.min(openY, closeY);
-            const bodyHeight = Math.max(Math.abs(closeY - openY), 1.8);
+            const bodyHeight = Math.max(Math.abs(closeY - openY), 2);
             const bullish = candle.close >= candle.open;
             const bodyFill = bullish ? "rgba(34,197,94,0.95)" : "rgba(244,63,94,0.95)";
             const wickStroke = bullish ? "rgba(74,222,128,0.95)" : "rgba(251,113,133,0.95)";
@@ -904,7 +935,7 @@ function CandlestickChart({ candles, assetType, currentPrice }: CandlestickChart
               x2={width}
               y1={priceToY(currentPrice)}
               y2={priceToY(currentPrice)}
-              stroke="rgba(59,130,246,0.65)"
+              stroke="rgba(59,130,246,0.6)"
               strokeDasharray="7 6"
               strokeWidth="1.3"
             />
@@ -924,16 +955,16 @@ function CandlestickChart({ candles, assetType, currentPrice }: CandlestickChart
           </span>
           <span className="inline-flex items-center gap-2">
             <span className="inline-block h-3 w-3 rounded-sm bg-green-500" />
-            Bullish candle
+            Bullish
           </span>
           <span className="inline-flex items-center gap-2">
             <span className="inline-block h-3 w-3 rounded-sm bg-rose-500" />
-            Bearish candle
+            Bearish
           </span>
         </div>
 
         <div className="text-right">
-          {formatDate(firstVisible.time)} — {formatDate(lastVisible.time)} · Daily candles ·{" "}
+          {formatDate(firstVisible.time)} — {formatDate(lastVisible.time)} ·{" "}
           {formatPrice(lowestPrice, assetType)} / {formatPrice(highestPrice, assetType)}
         </div>
       </div>
@@ -977,6 +1008,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
   const [ticker, setTicker] = useState("");
+  const [activeSymbol, setActiveSymbol] = useState("");
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -990,10 +1022,22 @@ export default function Home() {
   const [priceTargetData, setPriceTargetData] = useState<PriceTargetData | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [extrasLoading, setExtrasLoading] = useState(false);
+  const [extrasLoadedSymbol, setExtrasLoadedSymbol] = useState("");
   const [error, setError] = useState("");
 
   const glowRef = useRef<HTMLDivElement>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSearchQueryRef = useRef("");
+  const requestIdRef = useRef(0);
+  const latestAnalyzedSymbolRef = useRef("");
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, []);
 
   const handleMouseMove = (e: MouseEvent<HTMLElement>) => {
     if (glowRef.current) {
@@ -1004,6 +1048,9 @@ export default function Home() {
   const handleInputChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
     setTicker(value);
+    latestSearchQueryRef.current = value;
+
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
     if (value.length < 1) {
       setSuggestions([]);
@@ -1011,37 +1058,42 @@ export default function Home() {
       return;
     }
 
-    try {
-      const localMatches = MARKET_DB.filter(
-        (item) =>
-          item.symbol.toUpperCase().includes(value) ||
-          cleanSymbol(item.symbol).toUpperCase().includes(value) ||
-          item.description.toUpperCase().includes(value)
-      );
+    const localMatches = MARKET_DB.filter(
+      (item) =>
+        item.symbol.toUpperCase().includes(value) ||
+        cleanSymbol(item.symbol).toUpperCase().includes(value) ||
+        item.description.toUpperCase().includes(value)
+    );
 
-      const searchResults = await safeFetchJson<{ result?: FinnhubSearchResult[] }>(
+    const aliasMatches = Object.entries(SYMBOL_ALIASES)
+      .filter(([alias]) => alias.includes(value))
+      .slice(0, 4)
+      .map(([alias, symbol]) => ({
+        symbol,
+        description: `${alias} quick alias`,
+      }));
+
+    if (value.length < 2) {
+      setSuggestions(dedupeSuggestions([...localMatches, ...aliasMatches]).slice(0, 8));
+      setShowSuggestions(true);
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      const remote = await safeFetchJson<{ result?: FinnhubSearchResult[] }>(
         `https://finnhub.io/api/v1/search?q=${encodeURIComponent(value)}&token=${API_KEY}`
       );
 
-      const apiMatches: SuggestionItem[] = (searchResults?.result ?? []).slice(0, 5).map((item) => ({
+      if (latestSearchQueryRef.current !== value) return;
+
+      const apiMatches: SuggestionItem[] = (remote?.result ?? []).slice(0, 5).map((item) => ({
         symbol: item.symbol,
         description: item.description || item.displaySymbol || item.symbol,
       }));
 
-      const aliasMatches = Object.entries(SYMBOL_ALIASES)
-        .filter(([alias]) => alias.includes(value))
-        .slice(0, 4)
-        .map(([alias, symbol]) => ({
-          symbol,
-          description: `${alias} quick alias`,
-        }));
-
       setSuggestions(dedupeSuggestions([...localMatches, ...aliasMatches, ...apiMatches]).slice(0, 8));
       setShowSuggestions(true);
-    } catch (searchError) {
-      console.error(searchError);
-      setShowSuggestions(false);
-    }
+    }, 260);
   };
 
   const handleSelectSuggestion = (selectedSymbol: string) => {
@@ -1050,37 +1102,66 @@ export default function Home() {
     handleSearch(selectedSymbol);
   };
 
+  const loadEquityExtras = async (symbol: string, requestId: number) => {
+    if (!symbol || getAssetType(symbol) !== "stock") return;
+
+    setExtrasLoading(true);
+
+    const newsFrom = toIsoDate(new Date(Date.now() - 1000 * 60 * 60 * 24 * 21));
+    const newsTo = toIsoDate(new Date());
+
+    const [newsRes, earningsRes, priceTargetRes] = await Promise.all([
+      safeFetchJson<NewsItem[]>(
+        `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(
+          symbol
+        )}&from=${newsFrom}&to=${newsTo}&token=${API_KEY}`
+      ),
+      safeFetchJson<EarningsItem[]>(
+        `https://finnhub.io/api/v1/stock/earnings?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`
+      ),
+      safeFetchJson<PriceTargetData>(
+        `https://finnhub.io/api/v1/stock/price-target?symbol=${encodeURIComponent(
+          symbol
+        )}&token=${API_KEY}`
+      ),
+    ]);
+
+    if (requestIdRef.current !== requestId || latestAnalyzedSymbolRef.current !== symbol) {
+      return;
+    }
+
+    setNewsData(normalizeNews(newsRes ?? []));
+    setEarningsData(normalizeEarnings(earningsRes ?? []));
+    setPriceTargetData(priceTargetRes && Object.keys(priceTargetRes).length ? priceTargetRes : null);
+    setExtrasLoadedSymbol(symbol);
+    setExtrasLoading(false);
+  };
+
   const handleSearch = async (searchSymbol = ticker) => {
     const resolvedSymbol = resolveSearchSymbol(searchSymbol);
     if (!resolvedSymbol) return;
 
+    const currentRequestId = requestIdRef.current + 1;
+    requestIdRef.current = currentRequestId;
+    latestAnalyzedSymbolRef.current = resolvedSymbol;
+
     setTicker(resolvedSymbol);
+    setActiveSymbol(resolvedSymbol);
     setLoading(true);
     setError("");
     setShowSuggestions(false);
+    setActiveTab("overview");
+
+    setNewsData([]);
+    setEarningsData([]);
+    setPriceTargetData(null);
+    setExtrasLoadedSymbol("");
+    setExtrasLoading(false);
 
     try {
       const assetType = getAssetType(resolvedSymbol);
-      const now = Math.floor(Date.now() / 1000);
-      const from = now - 60 * 60 * 24 * 420;
-      
-      const newsFromDate = new Date(Date.now() - 1000 * 60 * 60 * 24 * 21);
-      const newsFrom = Number.isNaN(newsFromDate.getTime()) ? "" : newsFromDate.toISOString().slice(0, 10);
-      const newsToDate = new Date();
-      const newsTo = Number.isNaN(newsToDate.getTime()) ? "" : newsToDate.toISOString().slice(0, 10);
-      
-      const candleEndpoint = getCandleEndpoint(resolvedSymbol);
 
-      const [
-        quoteRes,
-        profileRes,
-        candleRes,
-        recommendationRes,
-        metricsRes,
-        newsRes,
-        earningsRes,
-        priceTargetRes,
-      ] = await Promise.all([
+      const [quoteRes, profileRes, candleRes, metricsRes, recsRes] = await Promise.all([
         safeFetchJson<QuoteData>(
           `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(resolvedSymbol)}&token=${API_KEY}`
         ),
@@ -1089,18 +1170,7 @@ export default function Home() {
             resolvedSymbol
           )}&token=${API_KEY}`
         ),
-        safeFetchJson<CandleData>(
-          `https://finnhub.io/api/v1/${candleEndpoint}?symbol=${encodeURIComponent(
-            resolvedSymbol
-          )}&resolution=D&from=${from}&to=${now}&token=${API_KEY}`
-        ),
-        assetType === "stock"
-          ? safeFetchJson<RecommendationTrend[]>(
-              `https://finnhub.io/api/v1/stock/recommendation?symbol=${encodeURIComponent(
-                resolvedSymbol
-              )}&token=${API_KEY}`
-            )
-          : Promise.resolve(null),
+        fetchCandlesWithFallback(resolvedSymbol),
         assetType === "stock"
           ? safeFetchJson<BasicFinancialsData>(
               `https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(
@@ -1109,31 +1179,18 @@ export default function Home() {
             )
           : Promise.resolve(null),
         assetType === "stock"
-          ? safeFetchJson<NewsItem[]>(
-              `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(
-                resolvedSymbol
-              )}&from=${newsFrom}&to=${newsTo}&token=${API_KEY}`
-            )
-          : Promise.resolve(null),
-        assetType === "stock"
-          ? safeFetchJson<EarningsItem[]>(
-              `https://finnhub.io/api/v1/stock/earnings?symbol=${encodeURIComponent(
-                resolvedSymbol
-              )}&token=${API_KEY}`
-            )
-          : Promise.resolve(null),
-        assetType === "stock"
-          ? safeFetchJson<PriceTargetData>(
-              `https://finnhub.io/api/v1/stock/price-target?symbol=${encodeURIComponent(
+          ? safeFetchJson<RecommendationTrend[]>(
+              `https://finnhub.io/api/v1/stock/recommendation?symbol=${encodeURIComponent(
                 resolvedSymbol
               )}&token=${API_KEY}`
             )
           : Promise.resolve(null),
       ]);
 
+      if (requestIdRef.current !== currentRequestId) return;
+
       const candleOk = candleRes?.s === "ok" && Array.isArray(candleRes.c) && candleRes.c.length > 0;
-      const lastCandleClose =
-        candleOk && candleRes ? candleRes.c[candleRes.c.length - 1] : 0;
+      const lastCandleClose = candleOk && candleRes ? candleRes.c[candleRes.c.length - 1] : 0;
       const prevCandleClose =
         candleOk && candleRes && candleRes.c.length > 1 ? candleRes.c[candleRes.c.length - 2] : 0;
 
@@ -1185,15 +1242,12 @@ export default function Home() {
       };
 
       if (!normalizedQuote.c) {
-        setError(`No data found for ${resolvedSymbol}. Please select a valid ticker from the dropdown.`);
+        setError(`No data found for ${resolvedSymbol}. Please select a valid ticker.`);
         setStockData(null);
         setCompanyData(null);
         setCandlesData(null);
         setRecommendationData([]);
         setBasicFinancials(null);
-        setNewsData([]);
-        setEarningsData([]);
-        setPriceTargetData(null);
         return;
       }
 
@@ -1207,32 +1261,48 @@ export default function Home() {
             }
       );
       setCandlesData(candleOk && candleRes ? candleRes : null);
-      setRecommendationData(normalizeRecommendations(recommendationRes ?? []));
+      setRecommendationData(normalizeRecommendations(recsRes ?? []));
       setBasicFinancials(metricsRes?.metric ? metricsRes : null);
-      setNewsData(normalizeNews(newsRes ?? []));
-      setEarningsData(normalizeEarnings(earningsRes ?? []));
-      setPriceTargetData(priceTargetRes && Object.keys(priceTargetRes).length ? priceTargetRes : null);
-      setActiveTab("overview");
 
       setTimeout(() => {
         analysisRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 250);
+
+      if (assetType === "stock") {
+        void loadEquityExtras(resolvedSymbol, currentRequestId);
+      }
     } catch (searchError) {
       console.error(searchError);
       setError("Network error. Please try again.");
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === currentRequestId) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleTabChange = (tab: TabKey) => {
+    setActiveTab(tab);
+
+    if (
+      activeSymbol &&
+      getAssetType(activeSymbol) === "stock" &&
+      (tab === "fundamentals" || tab === "news") &&
+      !extrasLoading &&
+      extrasLoadedSymbol !== activeSymbol
+    ) {
+      void loadEquityExtras(activeSymbol, requestIdRef.current);
     }
   };
 
   const analysis = useMemo(() => {
-    if (!stockData) return null;
+    if (!stockData || !activeSymbol) return null;
 
     const closes = candlesData?.c ?? [];
     const highs = candlesData?.h ?? [];
     const lows = candlesData?.l ?? [];
     const volumes = candlesData?.v ?? [];
-    const assetType = getAssetType(ticker);
+    const assetType = getAssetType(activeSymbol);
 
     const sma20 = calculateSMA(closes, 20);
     const sma50 = calculateSMA(closes, 50);
@@ -1243,13 +1313,15 @@ export default function Home() {
     const atr14 = calculateATR(highs, lows, closes, 14);
     const atrPct = isNumber(atr14) && stockData.c ? (atr14 / stockData.c) * 100 : null;
     const macd = calculateMACD(closes);
-    const macdHistogramPct =
-      isNumber(macd?.histogram) && stockData.c ? ((macd.histogram ?? 0) / stockData.c) * 100 : null;
     const volatility30d = calculateVolatility(closes, 30);
     const dayRangePos = getRangePercent(stockData.c, stockData.l, stockData.h);
 
-    const week52High = basicFinancials?.metric?.["52WeekHigh"] ?? (highs.length ? Math.max(...highs.slice(-252)) : null);
-    const week52Low = basicFinancials?.metric?.["52WeekLow"] ?? (lows.length ? Math.min(...lows.slice(-252)) : null);
+    const week52High =
+      basicFinancials?.metric?.["52WeekHigh"] ??
+      (highs.length ? Math.max(...highs.slice(-Math.min(252, highs.length))) : null);
+    const week52Low =
+      basicFinancials?.metric?.["52WeekLow"] ??
+      (lows.length ? Math.min(...lows.slice(-Math.min(252, lows.length))) : null);
     const week52Pos = getRangePercent(stockData.c, week52Low, week52High);
 
     const latestVolume = volumes.length ? volumes[volumes.length - 1] : null;
@@ -1275,22 +1347,42 @@ export default function Home() {
       totalRec && latestRec ? ((latestRec.sell + latestRec.strongSell) / totalRec) * 100 : null;
 
     const priceTargetUpside = upsideFromPrice(priceTargetData?.targetMean, stockData.c);
-    const latestEarnings = earningsData[0] ?? null;
-    const latestEarningsSurprise = isNumber(latestEarnings?.surprisePercent)
-      ? latestEarnings?.surprisePercent ?? null
-      : percentDiffFrom(latestEarnings?.actual ?? null, latestEarnings?.estimate ?? null);
+
+    let score = 50;
+
+    if (isNumber(stockData.c) && isNumber(ema20)) score += stockData.c > ema20 ? 10 : -10;
+    if (isNumber(ema20) && isNumber(ema50)) score += ema20 > ema50 ? 12 : -12;
+    if (isNumber(sma50) && isNumber(sma200)) score += sma50 > sma200 ? 10 : -10;
+
+    if (isNumber(rsi14)) {
+      if (rsi14 >= 55 && rsi14 <= 70) score += 10;
+      else if (rsi14 > 70) score += 2;
+      else if (rsi14 < 35) score -= 10;
+      else if (rsi14 < 45) score -= 5;
+    }
+
+    if (isNumber(macd?.histogram)) score += (macd?.histogram ?? 0) >= 0 ? 7 : -7;
+    if (isNumber(stockData.dp)) score += clamp(stockData.dp * 1.3, -8, 8);
+    if (isNumber(volumeRatio)) {
+      if ((volumeRatio ?? 0) > 1.2 && stockData.dp > 0) score += 5;
+      if ((volumeRatio ?? 0) > 1.2 && stockData.dp < 0) score -= 3;
+    }
+    if (isNumber(bullishPct)) score += (bullishPct - 50) / 6;
+    if (isNumber(priceTargetUpside)) score += clamp(priceTargetUpside / 2, -6, 6);
+
+    score = clamp(score, 0, 100);
 
     const trendMeter = clamp(
       50 +
         (isNumber(stockData.c) && isNumber(ema20) ? (stockData.c > ema20 ? 15 : -15) : 0) +
         (isNumber(ema20) && isNumber(ema50) ? (ema20 > ema50 ? 18 : -18) : 0) +
-        (isNumber(sma50) && isNumber(sma200) ? (sma50 > sma200 ? 15 : -15) : 0)
+        (isNumber(sma50) && isNumber(sma200) ? (sma50 > sma200 ? 12 : -12) : 0)
     );
 
     const momentumMeter = clamp(
       50 +
         (isNumber(rsi14) ? (rsi14 - 50) * 1.1 : 0) +
-        (isNumber(macdHistogramPct) ? clamp(macdHistogramPct * 120, -12, 12) : 0) +
+        (isNumber(macd?.histogram) ? clamp((macd?.histogram ?? 0) * 30, -12, 12) : 0) +
         clamp(stockData.dp * 1.1, -8, 8)
     );
 
@@ -1298,7 +1390,7 @@ export default function Home() {
       50 +
         (isNumber(bullishPct) ? (bullishPct - 50) * 0.8 : 0) +
         (isNumber(priceTargetUpside) ? clamp(priceTargetUpside, -15, 15) : 0) +
-        (isNumber(volumeRatio) ? clamp((volumeRatio - 1) * 10, -8, 8) : 0)
+        (isNumber(volumeRatio) ? clamp(((volumeRatio ?? 1) - 1) * 10, -8, 8) : 0)
     );
 
     const stabilityMeter = clamp(
@@ -1310,14 +1402,7 @@ export default function Home() {
         (isNumber(atrPct) ? atrPct * 4 : 0)
     );
 
-    let compositeScore = clamp(
-      trendMeter * 0.35 + momentumMeter * 0.3 + sentimentMeter * 0.2 + stabilityMeter * 0.15
-    );
-    
-    // הגנה אחרונה לחישוב הקומפוזיט
-    if (!Number.isFinite(compositeScore)) compositeScore = 50;
-
-    const signal = getSignalFromScore(compositeScore);
+    const signal = getSignalFromScore(score);
 
     const trendBias =
       trendMeter >= 65
@@ -1330,25 +1415,25 @@ export default function Home() {
       stabilityMeter >= 68 ? "Controlled" : stabilityMeter >= 48 ? "Balanced" : "Aggressive";
 
     const summaryParts: string[] = [
-      `${cleanSymbol(ticker)} is currently rated ${signal.text.toLowerCase()} with a composite score of ${Math.round(
-        compositeScore
+      `${cleanSymbol(activeSymbol)} is currently rated ${signal.text.toLowerCase()} with a composite score of ${Math.round(
+        score
       )}/100.`,
     ];
 
     if (isNumber(rsi14)) {
       summaryParts.push(
         rsi14 > 70
-          ? `RSI is ${rsi14.toFixed(1)}, so momentum is extended and hot.`
+          ? `RSI is ${rsi14.toFixed(1)}, so momentum is extended.`
           : rsi14 < 35
-          ? `RSI is ${rsi14.toFixed(1)}, which points to weak or oversold momentum.`
+          ? `RSI is ${rsi14.toFixed(1)}, which points to soft / oversold momentum.`
           : `RSI is ${rsi14.toFixed(1)}, which keeps momentum in a healthier zone.`
       );
     }
 
     if (isNumber(ema20) && isNumber(ema50)) {
       summaryParts.push(
-        `Spot is ${stockData.c > ema20 ? "above" : "below"} EMA 20, and the short trend is ${
-          ema20 > ema50 ? "still above" : "still below"
+        `Spot is ${stockData.c > ema20 ? "above" : "below"} EMA 20, and short trend is ${
+          ema20 > ema50 ? "above" : "below"
         } EMA 50.`
       );
     }
@@ -1361,7 +1446,7 @@ export default function Home() {
 
     return {
       assetType,
-      score: compositeScore,
+      score,
       signal,
       trendBias,
       riskLevel,
@@ -1374,7 +1459,6 @@ export default function Home() {
       atr14,
       atrPct,
       macd,
-      macdHistogramPct,
       volatility30d,
       dayRangePos,
       week52High,
@@ -1392,8 +1476,6 @@ export default function Home() {
       latestVolume,
       avg20Volume,
       priceTargetUpside,
-      latestEarnings,
-      latestEarningsSurprise,
       meters: {
         trend: trendMeter,
         momentum: momentumMeter,
@@ -1403,13 +1485,12 @@ export default function Home() {
       summary: summaryParts.join(" "),
     };
   }, [
+    activeSymbol,
     basicFinancials,
     candlesData,
-    earningsData,
     priceTargetData,
     recommendationData,
     stockData,
-    ticker,
   ]);
 
   const tabs: Array<{ key: TabKey; label: string; icon: ReactNode }> = [
@@ -1473,8 +1554,8 @@ export default function Home() {
               </h1>
 
               <p className="text-gray-400 text-lg max-w-2xl mx-auto leading-8">
-                Premium market analysis with structured technicals, fundamentals, company news,
-                earnings context, and cleaner execution logic.
+                Premium market analysis with cleaner formatting, stronger layout, better indicator handling,
+                and a more reliable dashboard flow.
               </p>
             </div>
 
@@ -1488,11 +1569,11 @@ export default function Home() {
 
                 <input
                   type="text"
-                  placeholder="Search ticker (e.g. AAPL, BTC, ETH, EUR_USD)"
+                  placeholder="Search ticker (e.g. AAPL, NVDA, BTC, ETH, EUR_USD)"
                   value={ticker}
                   onChange={handleInputChange}
                   onFocus={() => ticker.length >= 1 && suggestions.length > 0 && setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   className="w-full bg-transparent px-4 py-4 text-lg md:text-xl outline-none placeholder:text-gray-600 font-medium tracking-wide"
                 />
@@ -1588,7 +1669,7 @@ export default function Home() {
                       />
                     ) : (
                       <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-gray-800 to-black border border-white/10 flex items-center justify-center text-3xl font-bold shadow-xl shrink-0">
-                        {cleanSymbol(ticker).charAt(0)}
+                        {cleanSymbol(activeSymbol).charAt(0)}
                       </div>
                     )}
 
@@ -1599,12 +1680,12 @@ export default function Home() {
                       </div>
 
                       <h2 className="mt-4 text-4xl md:text-5xl font-black tracking-tight text-white break-words leading-tight">
-                        {companyData?.name || cleanSymbol(ticker)}
+                        {companyData?.name || cleanSymbol(activeSymbol)}
                       </h2>
 
                       <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-400 min-w-0">
                         <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 font-bold tracking-[0.22em] text-blue-300 uppercase break-all">
-                          {ticker}
+                          {activeSymbol}
                         </span>
 
                         {companyData?.exchange && (
@@ -1630,6 +1711,17 @@ export default function Home() {
                             {companyData.finnhubIndustry}
                           </span>
                         )}
+
+                        {companyData?.weburl && (
+                          <a
+                            href={companyData.weburl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 hover:text-white transition-colors break-all"
+                          >
+                            Website
+                          </a>
+                        )}
                       </div>
 
                       <p className="mt-5 max-w-3xl text-sm md:text-[15px] text-gray-400 leading-8">
@@ -1638,39 +1730,20 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full 2xl:w-auto 2xl:min-w-[620px]">
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 min-w-0">
-                      <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
-                        Spot Price
-                      </p>
-                      <p className="mt-3 text-4xl md:text-5xl font-black tracking-tight break-all leading-tight">
-                        {formatPrice(stockData.c, analysis.assetType)}
-                      </p>
-                      <div
-                        className={`mt-4 flex items-center gap-2 text-sm font-bold ${
-                          stockData.d >= 0 ? "text-emerald-400" : "text-rose-400"
-                        }`}
-                      >
-                        {stockData.d >= 0 ? <FiArrowUp /> : <FiArrowDown />}
-                        <span>{formatSignedPrice(stockData.d, analysis.assetType)}</span>
-                        <span className="rounded-full border border-current/20 bg-current/10 px-2 py-1">
-                          {formatSignedPercent(stockData.dp)}
-                        </span>
-                      </div>
-                    </div>
-
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full 2xl:w-auto 2xl:min-w-[540px]">
                     <div
                       className={`rounded-3xl border p-5 min-w-0 ${analysis.signal.bg} ${analysis.signal.border}`}
                     >
                       <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
                         Composite Signal
                       </p>
-                      <p className={`mt-3 text-2xl md:text-3xl font-black break-words ${analysis.signal.color}`}>
+                      <p className={`mt-3 text-3xl font-black break-words ${analysis.signal.color}`}>
                         {analysis.signal.text}
                       </p>
+                      <p className="mt-2 text-sm font-bold text-white">{Math.round(analysis.score)}/100</p>
                       <div className="mt-4 flex items-center justify-between gap-3 text-xs text-gray-400">
-                        <span>{Math.round(analysis.score)}/100</span>
-                        <span>{analysis.riskLevel} risk</span>
+                        <span className="break-words">{analysis.trendBias}</span>
+                        <span className="break-words text-right">{analysis.riskLevel} risk</span>
                       </div>
                     </div>
 
@@ -1678,21 +1751,19 @@ export default function Home() {
                       <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
                         Live Read
                       </p>
-                      <p className="mt-3 text-xl md:text-2xl font-black text-white break-words">
-                        {analysis.trendBias}
+                      <p className="mt-3 text-2xl font-black text-white break-words">
+                        {analysis.dayRangePos !== null
+                          ? `${analysis.dayRangePos.toFixed(0)}% day position`
+                          : "N/A"}
                       </p>
                       <div className="mt-4 space-y-2 text-xs text-gray-400">
                         <div className="flex items-center justify-between gap-4">
-                          <span>Day placement</span>
-                          <span>
-                            {analysis.dayRangePos !== null
-                              ? `${analysis.dayRangePos.toFixed(0)}%`
-                              : "N/A"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
                           <span>Updated</span>
                           <span>{formatDateTime(stockData.t)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span>Open gap</span>
+                          <span>{formatSignedPercent(analysis.openGapPct)}</span>
                         </div>
                       </div>
                     </div>
@@ -1706,7 +1777,7 @@ export default function Home() {
                     return (
                       <button
                         key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
+                        onClick={() => handleTabChange(tab.key)}
                         className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition-all ${
                           isActive
                             ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
@@ -1726,72 +1797,138 @@ export default function Home() {
                   <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     <div className="xl:col-span-2 space-y-6">
                       <SectionCard
-                        title="Price Action & Structure"
-                        subtitle="Daily candlestick view with moving average overlays and cleaner price formatting."
+                        title="Price Structure"
+                        subtitle="Cleaner chart, rounded values, and layout fixes so nothing gets clipped."
                         icon={<FiActivity className="text-blue-500" />}
-                        headerRight={
-                          <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-gray-400 font-bold">
-                            {analysis.assetType}
-                          </span>
-                        }
                       >
-                        <CandlestickChart
-                          candles={candlesData}
-                          assetType={analysis.assetType}
-                          currentPrice={stockData.c}
-                        />
+                        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-col md:flex-row md:items-end gap-5">
+                              <div className="min-w-0">
+                                <p className="text-5xl md:text-7xl font-black tracking-tight break-all leading-none">
+                                  {formatPrice(stockData.c, analysis.assetType)}
+                                </p>
+                              </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-6">
-                          <MetricCard
-                            label="Open"
-                            value={formatPrice(stockData.o, analysis.assetType)}
-                            hint="Current session open"
-                            accent="blue"
+                              <div
+                                className={`flex items-center gap-3 text-2xl md:text-3xl font-black ${
+                                  stockData.d >= 0 ? "text-emerald-400" : "text-rose-400"
+                                }`}
+                              >
+                                {stockData.d >= 0 ? <FiArrowUp /> : <FiArrowDown />}
+                                <span className="break-all">
+                                  {formatSignedPrice(stockData.d, analysis.assetType)}
+                                </span>
+                                <span className="text-xl md:text-2xl">{formatSignedPercent(stockData.dp)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="w-full xl:w-[260px] shrink-0 grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3">
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 min-w-0">
+                              <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
+                                Trend Bias
+                              </p>
+                              <p className="mt-2 text-sm font-black text-white leading-6 break-words">
+                                {analysis.trendBias}
+                              </p>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 min-w-0">
+                              <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
+                                Risk Profile
+                              </p>
+                              <p className="mt-2 text-sm font-black text-white leading-6 break-words">
+                                {analysis.riskLevel}
+                              </p>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 min-w-0">
+                              <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
+                                Last Update
+                              </p>
+                              <p className="mt-2 text-sm font-black text-white leading-6 break-words">
+                                {formatDateTime(stockData.t)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-6">
+                          <CandlestickChart
+                            candles={candlesData}
+                            assetType={analysis.assetType}
+                            currentPrice={stockData.c}
                           />
-                          <MetricCard
-                            label="Prev Close"
-                            value={formatPrice(stockData.pc, analysis.assetType)}
-                            hint="Previous official close"
-                          />
-                          <MetricCard
-                            label="Day Low / High"
-                            value={`${formatPrice(stockData.l, analysis.assetType)} — ${formatPrice(
-                              stockData.h,
-                              analysis.assetType
-                            )}`}
-                            hint="Intraday price range"
-                          />
-                          <MetricCard
-                            label="Open Gap"
-                            value={formatSignedPercent(analysis.openGapPct)}
-                            hint="Open vs previous close"
-                            accent={
-                              isNumber(analysis.openGapPct) && (analysis.openGapPct ?? 0) >= 0
-                                ? "green"
-                                : "rose"
-                            }
-                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-4">
+                              <p className="text-xs uppercase tracking-[0.25em] text-gray-500 font-bold">
+                                Intraday Position
+                              </p>
+                              <p className="text-sm font-semibold text-white">
+                                {analysis.dayRangePos !== null ? `${analysis.dayRangePos.toFixed(1)}%` : "N/A"}
+                              </p>
+                            </div>
+
+                            <div className="w-full h-3 bg-gray-900 rounded-full overflow-hidden border border-white/5 relative">
+                              <div
+                                className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-blue-600 to-cyan-400 rounded-full"
+                                style={{ width: `${analysis.dayRangePos ?? 0}%` }}
+                              />
+                            </div>
+
+                            <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest gap-4">
+                              <span>Low {formatPrice(stockData.l, analysis.assetType)}</span>
+                              <span>High {formatPrice(stockData.h, analysis.assetType)}</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-4">
+                              <p className="text-xs uppercase tracking-[0.25em] text-gray-500 font-bold">
+                                52W Position
+                              </p>
+                              <p className="text-sm font-semibold text-white">
+                                {analysis.week52Pos !== null ? `${analysis.week52Pos.toFixed(1)}%` : "N/A"}
+                              </p>
+                            </div>
+
+                            <div className="w-full h-3 bg-gray-900 rounded-full overflow-hidden border border-white/5 relative">
+                              <div
+                                className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-indigo-600 to-fuchsia-400 rounded-full"
+                                style={{ width: `${analysis.week52Pos ?? 0}%` }}
+                              />
+                            </div>
+
+                            <div className="flex justify-between text-xs font-bold text-gray-500 uppercase tracking-widest gap-4">
+                              <span>52W Low {formatPrice(analysis.week52Low, analysis.assetType)}</span>
+                              <span>52W High {formatPrice(analysis.week52High, analysis.assetType)}</span>
+                            </div>
+                          </div>
                         </div>
                       </SectionCard>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                         <MetricCard
                           label="RSI (14)"
-                          value={isNumber(analysis.rsi14) ? analysis.rsi14.toFixed(1) : "Insufficient history"}
+                          value={isNumber(analysis.rsi14) ? analysis.rsi14.toFixed(1) : "N/A"}
                           hint={
                             isNumber(analysis.rsi14)
                               ? analysis.rsi14 > 70
                                 ? "Momentum is extended"
                                 : analysis.rsi14 < 35
-                                ? "Momentum is weak / oversold"
+                                ? "Momentum is soft / oversold"
                                 : "Momentum is balanced"
-                              : "Loaded from candles when history is available"
+                              : "Indicator unavailable"
                           }
                           accent="amber"
                         />
                         <MetricCard
                           label="MACD Histogram"
-                          value={isNumber(analysis.macd?.histogram) ? formatNumber(analysis.macd?.histogram, 3) : "Insufficient history"}
+                          value={isNumber(analysis.macd?.histogram) ? formatNumber(analysis.macd?.histogram, 3) : "N/A"}
                           hint="Positive usually supports bullish momentum"
                           accent={
                             isNumber(analysis.macd?.histogram) && (analysis.macd?.histogram ?? 0) >= 0
@@ -1813,7 +1950,7 @@ export default function Home() {
                         />
                         <MetricCard
                           label="ATR (14)"
-                          value={isNumber(analysis.atr14) ? formatPrice(analysis.atr14, analysis.assetType) : "Insufficient history"}
+                          value={isNumber(analysis.atr14) ? formatPrice(analysis.atr14, analysis.assetType) : "N/A"}
                           hint={isNumber(analysis.atrPct) ? `${analysis.atrPct.toFixed(2)}% of spot price` : "Average true range"}
                           accent="amber"
                         />
@@ -1826,7 +1963,7 @@ export default function Home() {
                         <MetricCard
                           label="Pivot"
                           value={formatPrice(analysis.pivot, analysis.assetType)}
-                          hint="Intraday tactical midpoint"
+                          hint="Tactical midpoint"
                         />
                         <MetricCard
                           label="Resistance"
@@ -1839,9 +1976,75 @@ export default function Home() {
 
                     <div className="space-y-6">
                       <SectionCard
-                        title="Composite Breakdown"
-                        subtitle="Signal decomposition so the dashboard feels explainable instead of just decorative."
+                        title="Executive Summary"
+                        subtitle="Rounded values and cleaner spacing so the right column never gets crushed."
                         icon={<FiCpu className="text-violet-400" />}
+                      >
+                        <p className="text-sm text-gray-300 leading-8">{analysis.summary}</p>
+
+                        <div className="mt-6 space-y-3">
+                          {[
+                            { label: "Signal Score", value: `${Math.round(analysis.score)}/100` },
+                            { label: "Risk", value: analysis.riskLevel },
+                            {
+                              label: "Day Range Position",
+                              value:
+                                analysis.dayRangePos !== null ? `${analysis.dayRangePos.toFixed(1)}%` : "N/A",
+                            },
+                            {
+                              label: "52W Position",
+                              value:
+                                analysis.week52Pos !== null ? `${analysis.week52Pos.toFixed(1)}%` : "N/A",
+                            },
+                            { label: "Open Gap", value: formatSignedPercent(analysis.openGapPct) },
+                          ].map((item) => (
+                            <div
+                              key={item.label}
+                              className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                            >
+                              <span className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
+                                {item.label}
+                              </span>
+                              <span className="text-base font-black text-white text-right break-words">
+                                {item.value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </SectionCard>
+
+                      <SectionCard
+                        title="Key Market Stats"
+                        icon={<FiShield className="text-sky-400" />}
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <MetricCard
+                            label="Open"
+                            value={formatPrice(stockData.o, analysis.assetType)}
+                            hint="Current session open"
+                          />
+                          <MetricCard
+                            label="Prev Close"
+                            value={formatPrice(stockData.pc, analysis.assetType)}
+                            hint="Previous close"
+                          />
+                          <MetricCard
+                            label="Day Delta"
+                            value={formatSignedPrice(stockData.d, analysis.assetType)}
+                            hint={formatSignedPercent(stockData.dp)}
+                            accent={stockData.d >= 0 ? "green" : "rose"}
+                          />
+                          <MetricCard
+                            label="Updated"
+                            value={formatDateTime(stockData.t)}
+                            hint="Last market update"
+                          />
+                        </div>
+                      </SectionCard>
+
+                      <SectionCard
+                        title="Composite Breakdown"
+                        icon={<FiZap className="text-emerald-400" />}
                       >
                         <div className="space-y-5">
                           <ProgressBar label="Trend" value={analysis.meters.trend} tone="blue" />
@@ -1849,365 +2052,8 @@ export default function Home() {
                           <ProgressBar label="Sentiment" value={analysis.meters.sentiment} tone="green" />
                           <ProgressBar label="Stability" value={analysis.meters.stability} tone="violet" />
                         </div>
-
-                        <div className="mt-6 space-y-3">
-                          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-300 leading-7">
-                            Spot is{" "}
-                            <span className="font-bold text-white">
-                              {isNumber(analysis.ema20) && stockData.c > (analysis.ema20 ?? 0)
-                                ? "above"
-                                : isNumber(analysis.ema20)
-                                ? "below"
-                                : "not yet compared with"}
-                            </span>{" "}
-                            EMA 20{" "}
-                            {isNumber(analysis.ema20)
-                              ? `by ${formatSignedPercent(percentDiffFrom(stockData.c, analysis.ema20))}.`
-                              : "because more candle history is needed."}
-                          </div>
-
-                          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-300 leading-7">
-                            RSI is{" "}
-                            <span className="font-bold text-white">
-                              {isNumber(analysis.rsi14) ? analysis.rsi14.toFixed(1) : "not available yet"}
-                            </span>
-                            {isNumber(analysis.rsi14)
-                              ? analysis.rsi14 > 70
-                                ? ", which is overheated."
-                                : analysis.rsi14 < 35
-                                ? ", which is soft / oversold."
-                                : ", which is balanced."
-                              : " because the chart history is still insufficient."}
-                          </div>
-
-                          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-300 leading-7">
-                            MACD histogram is{" "}
-                            <span className="font-bold text-white">
-                              {isNumber(analysis.macd?.histogram)
-                                ? formatNumber(analysis.macd?.histogram, 3)
-                                : "not ready"}
-                            </span>
-                            {isNumber(analysis.macd?.histogram)
-                              ? (analysis.macd?.histogram ?? 0) >= 0
-                                ? ", supporting bullish acceleration."
-                                : ", showing fading momentum."
-                              : " until more candles are processed."}
-                          </div>
-                        </div>
-                      </SectionCard>
-
-                      <SectionCard
-                        title="Tactical Map"
-                        subtitle="Clean execution levels for continuation, rejection, and invalidation."
-                        icon={<FiTarget className="text-cyan-400" />}
-                      >
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                            <span className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
-                              Support
-                            </span>
-                            <span className="text-lg font-black text-blue-400 break-all">
-                              {formatPrice(analysis.recentSupport, analysis.assetType)}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                            <span className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
-                              Pivot
-                            </span>
-                            <span className="text-lg font-black text-white break-all">
-                              {formatPrice(analysis.pivot, analysis.assetType)}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                            <span className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
-                              Resistance
-                            </span>
-                            <span className="text-lg font-black text-violet-400 break-all">
-                              {formatPrice(analysis.recentResistance, analysis.assetType)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mt-6 pt-6 border-t border-white/10 space-y-3">
-                          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-300 leading-7">
-                            Bull case: hold above {formatPrice(analysis.pivot, analysis.assetType)} and clear{" "}
-                            {formatPrice(analysis.recentResistance, analysis.assetType)} with expanding volume.
-                          </div>
-
-                          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300 leading-7">
-                            Weakness trigger: lose {formatPrice(analysis.recentSupport, analysis.assetType)} and fail to reclaim the pivot.
-                          </div>
-                        </div>
                       </SectionCard>
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-                    <SectionCard
-                      title="Market Snapshot"
-                      icon={<FiShield className="text-sky-400" />}
-                      className="xl:col-span-1"
-                    >
-                      <div className="space-y-4">
-                        {[
-                          { label: "Exchange", value: companyData?.exchange || "N/A" },
-                          { label: "Country", value: companyData?.country || "N/A" },
-                          { label: "Currency", value: companyData?.currency || "N/A" },
-                          { label: "Industry", value: companyData?.finnhubIndustry || "N/A" },
-                          { label: "IPO", value: companyData?.ipo || "N/A" },
-                          { label: "Updated", value: formatDateTime(stockData.t) },
-                        ].map((item) => (
-                          <div
-                            key={item.label}
-                            className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                          >
-                            <span className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
-                              {item.label}
-                            </span>
-                            <span className="text-sm font-black text-white text-right break-words">
-                              {item.value}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {companyData?.weburl && (
-                        <a
-                          href={companyData.weburl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-5 inline-flex items-center gap-2 text-sm text-blue-300 hover:text-white transition-colors break-all"
-                        >
-                          <FiExternalLink />
-                          {companyData.weburl}
-                        </a>
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      title="Street Target"
-                      icon={<FiTarget className="text-amber-400" />}
-                      className="xl:col-span-1"
-                    >
-                      {analysis.assetType === "stock" ? (
-                        priceTargetData ? (
-                          <div className="space-y-4">
-                            <MetricCard
-                              label="Mean Target"
-                              value={formatPrice(priceTargetData.targetMean ?? null, "stock")}
-                              hint={
-                                isNumber(analysis.priceTargetUpside)
-                                  ? `${formatSignedPercent(analysis.priceTargetUpside)} vs current spot`
-                                  : "Upside not available"
-                              }
-                              accent={
-                                isNumber(analysis.priceTargetUpside) && (analysis.priceTargetUpside ?? 0) >= 0
-                                  ? "green"
-                                  : "rose"
-                              }
-                            />
-                            <MetricCard
-                              label="Median Target"
-                              value={formatPrice(priceTargetData.targetMedian ?? null, "stock")}
-                              hint={`Last updated ${formatDate(priceTargetData.lastUpdated)}`}
-                              accent="blue"
-                            />
-                            <MetricCard
-                              label="High / Low"
-                              value={`${formatPrice(priceTargetData.targetLow ?? null, "stock")} — ${formatPrice(
-                                priceTargetData.targetHigh ?? null,
-                                "stock"
-                              )}`}
-                              hint="Street target range"
-                              accent="violet"
-                            />
-                          </div>
-                        ) : (
-                          <EmptyState
-                            title="No price target available"
-                            description="Price target data is not available for this stock right now."
-                          />
-                        )
-                      ) : (
-                        <EmptyState
-                          title="Targets are stock-only here"
-                          description="This price target block is only displayed for equities."
-                        />
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      title="Analyst Consensus"
-                      icon={<FiZap className="text-emerald-400" />}
-                      className="xl:col-span-1"
-                    >
-                      {analysis.assetType === "stock" && analysis.latestRec ? (
-                        <>
-                          <div className="h-3 overflow-hidden rounded-full border border-white/10 bg-gray-900 flex">
-                            <div
-                              className="bg-green-400/90"
-                              style={{
-                                width: `${
-                                  analysis.totalRec
-                                    ? (((analysis.latestRec.strongBuy ?? 0) / analysis.totalRec) * 100)
-                                    : 0
-                                }%`,
-                              }}
-                            />
-                            <div
-                              className="bg-emerald-500/80"
-                              style={{
-                                width: `${
-                                  analysis.totalRec
-                                    ? (((analysis.latestRec.buy ?? 0) / analysis.totalRec) * 100)
-                                    : 0
-                                }%`,
-                              }}
-                            />
-                            <div
-                              className="bg-gray-500/70"
-                              style={{
-                                width: `${
-                                  analysis.totalRec
-                                    ? (((analysis.latestRec.hold ?? 0) / analysis.totalRec) * 100)
-                                    : 0
-                                }%`,
-                              }}
-                            />
-                            <div
-                              className="bg-rose-500/80"
-                              style={{
-                                width: `${
-                                  analysis.totalRec
-                                    ? (((analysis.latestRec.sell ?? 0) / analysis.totalRec) * 100)
-                                    : 0
-                                }%`,
-                              }}
-                            />
-                            <div
-                              className="bg-red-500/90"
-                              style={{
-                                width: `${
-                                  analysis.totalRec
-                                    ? (((analysis.latestRec.strongSell ?? 0) / analysis.totalRec) * 100)
-                                    : 0
-                                }%`,
-                              }}
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-5 gap-2 mt-4">
-                            {[
-                              { label: "SB", value: analysis.latestRec.strongBuy ?? 0 },
-                              { label: "B", value: analysis.latestRec.buy ?? 0 },
-                              { label: "H", value: analysis.latestRec.hold ?? 0 },
-                              { label: "S", value: analysis.latestRec.sell ?? 0 },
-                              { label: "SS", value: analysis.latestRec.strongSell ?? 0 },
-                            ].map((item) => (
-                              <div
-                                key={item.label}
-                                className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-center"
-                              >
-                                <p className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
-                                  {item.label}
-                                </p>
-                                <p className="text-lg font-black text-white mt-1">{item.value}</p>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="mt-4 space-y-2 text-sm text-gray-300">
-                            <p>
-                              Period: <span className="font-bold text-white">{analysis.latestRec.period}</span>
-                            </p>
-                            <p>
-                              Bullish share:{" "}
-                              <span className="font-bold text-emerald-400">
-                                {formatPercent(analysis.bullishPct)}
-                              </span>
-                            </p>
-                            <p>
-                              Bearish share:{" "}
-                              <span className="font-bold text-rose-400">
-                                {formatPercent(analysis.bearishPct)}
-                              </span>
-                            </p>
-                          </div>
-                        </>
-                      ) : (
-                        <EmptyState
-                          title="No analyst panel yet"
-                          description="Analyst consensus is unavailable for this asset or ticker at the moment."
-                        />
-                      )}
-                    </SectionCard>
-
-                    <SectionCard
-                      title="Recent Earnings"
-                      icon={<FiCalendar className="text-violet-400" />}
-                      className="xl:col-span-1"
-                    >
-                      {analysis.assetType === "stock" ? (
-                        earningsData.length > 0 ? (
-                          <div className="space-y-3">
-                            {earningsData.slice(0, 3).map((item, index) => {
-                              const surpriseValue = isNumber(item.surprisePercent)
-                                ? item.surprisePercent
-                                : percentDiffFrom(item.actual ?? null, item.estimate ?? null);
-
-                              return (
-                                <div
-                                  key={`${item.period}-${index}`}
-                                  className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                                >
-                                  <div className="flex items-center justify-between gap-4">
-                                    <span className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
-                                      {item.period || "Period N/A"}
-                                    </span>
-                                    <span
-                                      className={`text-sm font-black ${
-                                        isNumber(surpriseValue) && (surpriseValue ?? 0) >= 0
-                                          ? "text-emerald-400"
-                                          : "text-rose-400"
-                                      }`}
-                                    >
-                                      {formatSignedPercent(surpriseValue)}
-                                    </span>
-                                  </div>
-
-                                  <div className="mt-3 space-y-2 text-sm text-gray-300">
-                                    <p>
-                                      EPS actual:{" "}
-                                      <span className="font-bold text-white">
-                                        {formatNumber(item.actual ?? null, 2)}
-                                      </span>
-                                    </p>
-                                    <p>
-                                      EPS estimate:{" "}
-                                      <span className="font-bold text-white">
-                                        {formatNumber(item.estimate ?? null, 2)}
-                                      </span>
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <EmptyState
-                            title="No recent earnings rows"
-                            description="Recent earnings surprises were not returned for this ticker."
-                          />
-                        )
-                      ) : (
-                        <EmptyState
-                          title="Earnings are stock-specific"
-                          description="Crypto and FX symbols do not use the same company earnings block."
-                        />
-                      )}
-                    </SectionCard>
                   </div>
                 </>
               )}
@@ -2216,7 +2062,7 @@ export default function Home() {
                 <div className="space-y-6">
                   <SectionCard
                     title="Technical Chart"
-                    subtitle="Candles and moving averages, with most technical indicators computed locally from the candle history so you do not keep seeing dashes."
+                    subtitle="Candles plus moving averages, with cleaner fallback behavior if data is temporarily unavailable."
                     icon={<FiBarChart2 className="text-blue-500" />}
                   >
                     <CandlestickChart
@@ -2229,62 +2075,62 @@ export default function Home() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                     <MetricCard
                       label="RSI (14)"
-                      value={isNumber(analysis.rsi14) ? analysis.rsi14.toFixed(1) : "Insufficient history"}
-                      hint="Computed from daily candles"
+                      value={isNumber(analysis.rsi14) ? analysis.rsi14.toFixed(1) : "N/A"}
+                      hint="Computed from candles"
                       accent="amber"
                     />
                     <MetricCard
                       label="EMA 20"
-                      value={isNumber(analysis.ema20) ? formatPrice(analysis.ema20, analysis.assetType) : "Insufficient history"}
+                      value={isNumber(analysis.ema20) ? formatPrice(analysis.ema20, analysis.assetType) : "N/A"}
                       hint={
                         isNumber(analysis.ema20)
                           ? `${formatSignedPercent(percentDiffFrom(stockData.c, analysis.ema20))} vs spot`
-                          : "Needs more candles"
+                          : "Indicator unavailable"
                       }
                       accent="blue"
                     />
                     <MetricCard
                       label="EMA 50"
-                      value={isNumber(analysis.ema50) ? formatPrice(analysis.ema50, analysis.assetType) : "Insufficient history"}
+                      value={isNumber(analysis.ema50) ? formatPrice(analysis.ema50, analysis.assetType) : "N/A"}
                       hint="Medium trend filter"
                       accent="violet"
                     />
                     <MetricCard
                       label="SMA 20"
-                      value={isNumber(analysis.sma20) ? formatPrice(analysis.sma20, analysis.assetType) : "Insufficient history"}
+                      value={isNumber(analysis.sma20) ? formatPrice(analysis.sma20, analysis.assetType) : "N/A"}
                       hint="Short moving average"
                     />
                     <MetricCard
                       label="SMA 50"
-                      value={isNumber(analysis.sma50) ? formatPrice(analysis.sma50, analysis.assetType) : "Insufficient history"}
+                      value={isNumber(analysis.sma50) ? formatPrice(analysis.sma50, analysis.assetType) : "N/A"}
                       hint="Intermediate moving average"
                     />
                     <MetricCard
                       label="SMA 200"
-                      value={isNumber(analysis.sma200) ? formatPrice(analysis.sma200, analysis.assetType) : "Insufficient history"}
+                      value={isNumber(analysis.sma200) ? formatPrice(analysis.sma200, analysis.assetType) : "N/A"}
                       hint="Long-term trend regime"
                       accent="green"
                     />
                     <MetricCard
                       label="MACD"
-                      value={isNumber(analysis.macd?.macd) ? formatNumber(analysis.macd?.macd, 3) : "Insufficient history"}
+                      value={isNumber(analysis.macd?.macd) ? formatNumber(analysis.macd?.macd, 3) : "N/A"}
                       hint="12/26 EMA spread"
                       accent="blue"
                     />
                     <MetricCard
                       label="Signal Line"
-                      value={isNumber(analysis.macd?.signal) ? formatNumber(analysis.macd?.signal, 3) : "Insufficient history"}
+                      value={isNumber(analysis.macd?.signal) ? formatNumber(analysis.macd?.signal, 3) : "N/A"}
                       hint="9-period EMA on MACD"
                     />
                     <MetricCard
                       label="Histogram"
-                      value={isNumber(analysis.macd?.histogram) ? formatNumber(analysis.macd?.histogram, 3) : "Insufficient history"}
+                      value={isNumber(analysis.macd?.histogram) ? formatNumber(analysis.macd?.histogram, 3) : "N/A"}
                       hint={
                         isNumber(analysis.macd?.histogram)
                           ? (analysis.macd?.histogram ?? 0) >= 0
                             ? "Bullish acceleration"
                             : "Bearish acceleration"
-                          : "Needs more candles"
+                          : "Indicator unavailable"
                       }
                       accent={
                         isNumber(analysis.macd?.histogram) && (analysis.macd?.histogram ?? 0) >= 0
@@ -2294,8 +2140,8 @@ export default function Home() {
                     />
                     <MetricCard
                       label="ATR (14)"
-                      value={isNumber(analysis.atr14) ? formatPrice(analysis.atr14, analysis.assetType) : "Insufficient history"}
-                      hint={isNumber(analysis.atrPct) ? `${analysis.atrPct.toFixed(2)}% of spot price` : "Average true range"}
+                      value={isNumber(analysis.atr14) ? formatPrice(analysis.atr14, analysis.assetType) : "N/A"}
+                      hint={isNumber(analysis.atrPct) ? `${analysis.atrPct.toFixed(2)}% of spot` : "Average true range"}
                       accent="amber"
                     />
                     <MetricCard
@@ -2346,9 +2192,9 @@ export default function Home() {
                           <span className="font-bold text-white">{analysis.trendBias}</span>.{" "}
                           {isNumber(analysis.sma50) && isNumber(analysis.sma200)
                             ? analysis.sma50 > analysis.sma200
-                              ? "The 50-day average is above the 200-day average, which usually supports a healthier primary trend."
-                              : "The 50-day average is below the 200-day average, which usually points to a weaker long-term regime."
-                            : "Longer moving averages need more loaded history."}
+                              ? "The 50-day average is above the 200-day average, which supports a healthier primary trend."
+                              : "The 50-day average is below the 200-day average, which points to a weaker long-term regime."
+                            : "Longer moving averages are unavailable right now."}
                         </div>
 
                         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -2361,8 +2207,8 @@ export default function Home() {
                               ? " indicates an overheated move."
                               : analysis.rsi14 < 35
                               ? " indicates oversold pressure."
-                              : " indicates a more balanced momentum band."
-                            : " will appear once there are enough candles."}
+                              : " indicates a balanced momentum band."
+                            : " is not available at the moment."}
                         </div>
 
                         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -2411,225 +2257,237 @@ export default function Home() {
 
               {activeTab === "fundamentals" && (
                 analysis.assetType === "stock" ? (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                      <SectionCard
-                        title="Valuation & Profitability"
-                        icon={<FiBriefcase className="text-amber-400" />}
-                      >
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <MetricCard
-                            label="P / E"
-                            value={formatNumber(basicFinancials?.metric?.peBasicExclExtraTTM ?? null, 2)}
-                            hint="Trailing basic P/E"
-                          />
-                          <MetricCard
-                            label="EPS"
-                            value={formatNumber(
-                              basicFinancials?.metric?.epsBasicExclExtraItemsTTM ?? null,
-                              2
-                            )}
-                            hint="Trailing EPS"
-                            accent="green"
-                          />
-                          <MetricCard
-                            label="Dividend Yield"
-                            value={formatPercent(
-                              basicFinancials?.metric?.dividendYieldIndicatedAnnual ?? null
-                            )}
-                            hint="Indicated annual yield"
-                          />
-                          <MetricCard
-                            label="Beta"
-                            value={formatNumber(basicFinancials?.metric?.beta ?? null, 2)}
-                            hint="Relative market sensitivity"
-                            accent="rose"
-                          />
-                        </div>
-                      </SectionCard>
-
-                      <SectionCard
-                        title="Balance Sheet & Resilience"
-                        icon={<FiShield className="text-sky-400" />}
-                      >
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <MetricCard
-                            label="Current Ratio"
-                            value={formatNumber(
-                              basicFinancials?.metric?.currentRatioQuarterly ?? null,
-                              2
-                            )}
-                            hint="Short-term liquidity"
-                            accent="blue"
-                          />
-                          <MetricCard
-                            label="Debt / Equity"
-                            value={formatNumber(
-                              basicFinancials?.metric?.totalDebtToEquityQuarterly ?? null,
-                              2
-                            )}
-                            hint="Leverage pressure"
-                            accent="rose"
-                          />
-                          <MetricCard
-                            label="52W High"
-                            value={formatPrice(analysis.week52High, "stock")}
-                            hint="Annual top"
-                            accent="violet"
-                          />
-                          <MetricCard
-                            label="52W Low"
-                            value={formatPrice(analysis.week52Low, "stock")}
-                            hint="Annual floor"
-                            accent="blue"
-                          />
-                        </div>
-                      </SectionCard>
-
-                      <SectionCard
-                        title="Street Targets"
-                        icon={<FiTarget className="text-emerald-400" />}
-                      >
-                        {priceTargetData ? (
-                          <div className="space-y-4">
+                  extrasLoading && !priceTargetData && earningsData.length === 0 ? (
+                    <SectionCard
+                      title="Fundamentals"
+                      icon={<FiBriefcase className="text-amber-400" />}
+                    >
+                      <EmptyState
+                        title="Loading additional equity data..."
+                        description="Price targets, earnings and equity-specific details are loading."
+                      />
+                    </SectionCard>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                        <SectionCard
+                          title="Valuation & Profitability"
+                          icon={<FiBriefcase className="text-amber-400" />}
+                        >
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <MetricCard
-                              label="Mean Target"
-                              value={formatPrice(priceTargetData.targetMean ?? null, "stock")}
-                              hint={
-                                isNumber(analysis.priceTargetUpside)
-                                  ? `${formatSignedPercent(analysis.priceTargetUpside)} upside/downside from spot`
-                                  : "Upside not returned"
-                              }
-                              accent={
-                                isNumber(analysis.priceTargetUpside) && (analysis.priceTargetUpside ?? 0) >= 0
-                                  ? "green"
-                                  : "rose"
-                              }
+                              label="P / E"
+                              value={formatNumber(basicFinancials?.metric?.peBasicExclExtraTTM ?? null, 2)}
+                              hint="Trailing basic P/E"
                             />
                             <MetricCard
-                              label="Median Target"
-                              value={formatPrice(priceTargetData.targetMedian ?? null, "stock")}
-                              hint={`Updated ${formatDate(priceTargetData.lastUpdated)}`}
+                              label="EPS"
+                              value={formatNumber(
+                                basicFinancials?.metric?.epsBasicExclExtraItemsTTM ?? null,
+                                2
+                              )}
+                              hint="Trailing EPS"
+                              accent="green"
                             />
                             <MetricCard
-                              label="Target Range"
-                              value={`${formatPrice(priceTargetData.targetLow ?? null, "stock")} — ${formatPrice(
-                                priceTargetData.targetHigh ?? null,
-                                "stock"
-                              )}`}
-                              hint="Street low / high"
+                              label="Dividend Yield"
+                              value={formatPercent(
+                                basicFinancials?.metric?.dividendYieldIndicatedAnnual ?? null
+                              )}
+                              hint="Indicated annual yield"
+                            />
+                            <MetricCard
+                              label="Beta"
+                              value={formatNumber(basicFinancials?.metric?.beta ?? null, 2)}
+                              hint="Relative market sensitivity"
+                              accent="rose"
+                            />
+                          </div>
+                        </SectionCard>
+
+                        <SectionCard
+                          title="Balance Sheet & Resilience"
+                          icon={<FiShield className="text-sky-400" />}
+                        >
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <MetricCard
+                              label="Current Ratio"
+                              value={formatNumber(
+                                basicFinancials?.metric?.currentRatioQuarterly ?? null,
+                                2
+                              )}
+                              hint="Short-term liquidity"
+                              accent="blue"
+                            />
+                            <MetricCard
+                              label="Debt / Equity"
+                              value={formatNumber(
+                                basicFinancials?.metric?.totalDebtToEquityQuarterly ?? null,
+                                2
+                              )}
+                              hint="Leverage pressure"
+                              accent="rose"
+                            />
+                            <MetricCard
+                              label="52W High"
+                              value={formatPrice(analysis.week52High, "stock")}
+                              hint="Annual top"
                               accent="violet"
                             />
+                            <MetricCard
+                              label="52W Low"
+                              value={formatPrice(analysis.week52Low, "stock")}
+                              hint="Annual floor"
+                              accent="blue"
+                            />
                           </div>
-                        ) : (
-                          <EmptyState
-                            title="No price target data"
-                            description="The target block will appear when Finnhub returns analyst targets for this symbol."
-                          />
-                        )}
-                      </SectionCard>
-                    </div>
+                        </SectionCard>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                      <SectionCard
-                        title="Recent Earnings History"
-                        icon={<FiCalendar className="text-violet-400" />}
-                        className="xl:col-span-2"
-                      >
-                        {earningsData.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {earningsData.slice(0, 4).map((item, index) => {
-                              const surpriseValue = isNumber(item.surprisePercent)
-                                ? item.surprisePercent
-                                : percentDiffFrom(item.actual ?? null, item.estimate ?? null);
+                        <SectionCard
+                          title="Street Targets"
+                          icon={<FiTarget className="text-emerald-400" />}
+                        >
+                          {priceTargetData ? (
+                            <div className="space-y-4">
+                              <MetricCard
+                                label="Mean Target"
+                                value={formatPrice(priceTargetData.targetMean ?? null, "stock")}
+                                hint={
+                                  isNumber(analysis.priceTargetUpside)
+                                    ? `${formatSignedPercent(analysis.priceTargetUpside)} from spot`
+                                    : "Upside not available"
+                                }
+                                accent={
+                                  isNumber(analysis.priceTargetUpside) && (analysis.priceTargetUpside ?? 0) >= 0
+                                    ? "green"
+                                    : "rose"
+                                }
+                              />
+                              <MetricCard
+                                label="Median Target"
+                                value={formatPrice(priceTargetData.targetMedian ?? null, "stock")}
+                                hint={`Updated ${formatDate(priceTargetData.lastUpdated)}`}
+                              />
+                              <MetricCard
+                                label="Target Range"
+                                value={`${formatPrice(priceTargetData.targetLow ?? null, "stock")} — ${formatPrice(
+                                  priceTargetData.targetHigh ?? null,
+                                  "stock"
+                                )}`}
+                                hint="Street low / high"
+                                accent="violet"
+                              />
+                            </div>
+                          ) : (
+                            <EmptyState
+                              title="No price target data"
+                              description="The target block will appear when analyst target data is available."
+                            />
+                          )}
+                        </SectionCard>
+                      </div>
 
-                              return (
-                                <div
-                                  key={`${item.period}-${index}`}
-                                  className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 min-w-0"
-                                >
-                                  <div className="flex items-start justify-between gap-4">
-                                    <div className="min-w-0">
-                                      <p className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
-                                        {item.period || "Period N/A"}
-                                      </p>
-                                      <p className="mt-2 text-lg font-black text-white break-words">
-                                        EPS {formatNumber(item.actual ?? null, 2)}
-                                      </p>
+                      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                        <SectionCard
+                          title="Recent Earnings History"
+                          icon={<FiCalendar className="text-violet-400" />}
+                          className="xl:col-span-2"
+                        >
+                          {earningsData.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {earningsData.map((item, index) => {
+                                const surpriseValue = isNumber(item.surprisePercent)
+                                  ? item.surprisePercent
+                                  : percentDiffFrom(item.actual ?? null, item.estimate ?? null);
+
+                                return (
+                                  <div
+                                    key={`${item.period}-${index}`}
+                                    className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 min-w-0"
+                                  >
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="min-w-0">
+                                        <p className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
+                                          {item.period || "Period N/A"}
+                                        </p>
+                                        <p className="mt-2 text-lg font-black text-white break-words">
+                                          EPS {formatNumber(item.actual ?? null, 2)}
+                                        </p>
+                                      </div>
+
+                                      <span
+                                        className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${
+                                          isNumber(surpriseValue) && (surpriseValue ?? 0) >= 0
+                                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                                            : "border-rose-500/20 bg-rose-500/10 text-rose-300"
+                                        }`}
+                                      >
+                                        {formatSignedPercent(surpriseValue)}
+                                      </span>
                                     </div>
 
-                                    <span
-                                      className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${
-                                        isNumber(surpriseValue) && (surpriseValue ?? 0) >= 0
-                                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                                          : "border-rose-500/20 bg-rose-500/10 text-rose-300"
-                                      }`}
-                                    >
-                                      {formatSignedPercent(surpriseValue)}
-                                    </span>
+                                    <div className="mt-4 space-y-2 text-sm text-gray-400">
+                                      <p>
+                                        Estimate:{" "}
+                                        <span className="font-bold text-white">
+                                          {formatNumber(item.estimate ?? null, 2)}
+                                        </span>
+                                      </p>
+
+                                      <p>
+                                        Revenue:{" "}
+                                        <span className="font-bold text-white">
+                                          {formatCompactNumber(item.revenueActual ?? null, "$")}
+                                        </span>
+                                        {" / "}
+                                        <span className="font-bold text-white">
+                                          {formatCompactNumber(item.revenueEstimate ?? null, "$")}
+                                        </span>
+                                      </p>
+                                    </div>
                                   </div>
-
-                                  <div className="mt-4 space-y-2 text-sm text-gray-400">
-                                    <p>
-                                      Estimate:{" "}
-                                      <span className="font-bold text-white">
-                                        {formatNumber(item.estimate ?? null, 2)}
-                                      </span>
-                                    </p>
-
-                                    <p>
-                                      Revenue:{" "}
-                                      <span className="font-bold text-white">
-                                        {formatCompactNumber(item.revenueActual ?? null, "$")}
-                                      </span>
-                                      {" / "}
-                                      <span className="font-bold text-white">
-                                        {formatCompactNumber(item.revenueEstimate ?? null, "$")}
-                                      </span>
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <EmptyState
-                            title="No earnings records returned"
-                            description="Earnings history will show here once the API returns company earnings rows."
-                          />
-                        )}
-                      </SectionCard>
-
-                      <SectionCard
-                        title="Company Snapshot"
-                        icon={<FiGlobe className="text-blue-400" />}
-                      >
-                        <div className="space-y-4">
-                          {[
-                            { label: "Company", value: companyData?.name || cleanSymbol(ticker) },
-                            { label: "Ticker", value: ticker },
-                            { label: "Exchange", value: companyData?.exchange || "N/A" },
-                            { label: "Country", value: companyData?.country || "N/A" },
-                            { label: "Currency", value: companyData?.currency || "N/A" },
-                            { label: "Industry", value: companyData?.finnhubIndustry || "N/A" },
-                            { label: "IPO", value: companyData?.ipo || "N/A" },
-                          ].map((item) => (
-                            <div
-                              key={item.label}
-                              className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                            >
-                              <span className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
-                                {item.label}
-                              </span>
-                              <span className="text-sm font-black text-white text-right break-words">
-                                {item.value}
-                              </span>
+                                );
+                              })}
                             </div>
-                          ))}
-                        </div>
-                      </SectionCard>
+                          ) : (
+                            <EmptyState
+                              title="No earnings records returned"
+                              description="Earnings history will show here once the API returns company earnings rows."
+                            />
+                          )}
+                        </SectionCard>
+
+                        <SectionCard
+                          title="Company Snapshot"
+                          icon={<FiGlobe className="text-blue-400" />}
+                        >
+                          <div className="space-y-4">
+                            {[
+                              { label: "Company", value: companyData?.name || cleanSymbol(activeSymbol) },
+                              { label: "Ticker", value: activeSymbol },
+                              { label: "Exchange", value: companyData?.exchange || "N/A" },
+                              { label: "Country", value: companyData?.country || "N/A" },
+                              { label: "Currency", value: companyData?.currency || "N/A" },
+                              { label: "Industry", value: companyData?.finnhubIndustry || "N/A" },
+                              { label: "IPO", value: companyData?.ipo || "N/A" },
+                            ].map((item) => (
+                              <div
+                                key={item.label}
+                                className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                              >
+                                <span className="text-[10px] uppercase tracking-[0.25em] text-gray-500 font-bold">
+                                  {item.label}
+                                </span>
+                                <span className="text-sm font-black text-white text-right break-words">
+                                  {item.value}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </SectionCard>
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <SectionCard
                     title="Fundamentals"
@@ -2655,7 +2513,12 @@ export default function Home() {
                   }
                 >
                   {analysis.assetType === "stock" ? (
-                    newsData.length > 0 ? (
+                    extrasLoading && newsData.length === 0 ? (
+                      <EmptyState
+                        title="Loading recent headlines..."
+                        description="The news feed is being fetched for this company."
+                      />
+                    ) : newsData.length > 0 ? (
                       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                         {newsData.map((item, index) => (
                           <NewsCard key={`${item.id ?? item.headline}-${index}`} item={item} />
@@ -2664,7 +2527,7 @@ export default function Home() {
                     ) : (
                       <EmptyState
                         title="No recent company headlines"
-                        description="No news articles were returned for this symbol in the selected recent window."
+                        description="No news articles were returned for this symbol in the recent time window."
                       />
                     )
                   ) : (
