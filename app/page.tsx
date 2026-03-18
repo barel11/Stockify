@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { FiSearch, FiTrendingUp, FiArrowUp, FiArrowDown, FiActivity, FiBarChart2, FiCpu, FiTarget } from "react-icons/fi";
+import { FiSearch, FiTrendingUp, FiArrowUp, FiArrowDown, FiActivity, FiBarChart2, FiCpu, FiTarget, FiGlobe } from "react-icons/fi";
 
 const API_KEY = "d6t63tpr01qoqoisd0p0d6t63tpr01qoqoisd0pg";
 
