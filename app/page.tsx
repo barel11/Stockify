@@ -1,29 +1,21 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { FiSearch, FiTrendingUp } from "react-icons/fi";
 
 export default function Home() {
   const [ticker, setTicker] = useState("");
   
-  // --- Mouse Tracking Logic (The Pro Way!) ---
-  // במקום useState שמרענן את כל האתר, משתמשים ב-Ref שמדבר ישירות עם האלמנט
+  // הרפרנס לעיגול שעוקב
   const glowRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      if (glowRef.current) {
-        // translate3d מפעיל את כרטיס המסך (Hardware Acceleration) לתנועה חלקה באמת
-        glowRef.current.style.transform = `translate3d(${event.clientX - 150}px, ${event.clientY - 150}px, 0)`;
-      }
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-    };
-  }, []);
-  // -------------------------------------------
+  // הפונקציה שנקראת בכל פעם שהעכבר זז על המסך
+  const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+    if (glowRef.current) {
+      // מזיז את העיגול בצורה הכי חלקה שיש בלי לרענן את האתר
+      glowRef.current.style.transform = `translate(${e.clientX - 150}px, ${e.clientY - 150}px)`;
+    }
+  };
 
   const handleSearch = () => {
     if (!ticker) return;
@@ -32,7 +24,7 @@ export default function Home() {
 
   return (
     <>
-      {/* הזרקת CSS לאנימציית הרקע שעובדת לנו */}
+      {/* אנימציות הרקע עוקפות הכל */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes superFloat {
           0% { transform: translate(0px, 0px) scale(1); }
@@ -48,19 +40,26 @@ export default function Home() {
         }
       `}} />
 
-      <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6 relative overflow-hidden font-sans">
+      {/* הוספנו פה onMouseMove שמקשיב לעכבר */}
+      <main 
+        onMouseMove={handleMouseMove}
+        className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6 relative overflow-hidden font-sans"
+      >
         
         {/* --- CURSOR FOLLOW EFFECT --- */}
-        {/* העיגול העוקב עם useRef - עכשיו הוא לא תוקע שום דבר */}
+        {/* העיגול שזז עם העכבר. הוא מתחיל מחוץ למסך (-300px) כדי שלא יקפוץ פתאום */}
         <div
           ref={glowRef}
-          className="pointer-events-none fixed top-0 left-0 z-50 h-[300px] w-[300px] rounded-full bg-gradient-to-r from-blue-600/15 to-indigo-600/15 blur-[80px] transition-transform duration-75 ease-out"
+          className="pointer-events-none fixed top-0 left-0 z-0 h-[300px] w-[300px] rounded-full bg-gradient-to-r from-blue-600/30 to-indigo-600/30 blur-[80px] transition-transform duration-75 ease-out"
+          style={{ transform: 'translate(-300px, -300px)' }}
         ></div>
 
         {/* --- BACKGROUND ANIMATIONS --- */}
-        <div className="absolute top-[5%] left-[10%] w-[300px] h-[300px] bg-blue-600/40 rounded-full blur-[80px] pointer-events-none force-animate-blob"></div>
-        <div className="absolute bottom-[5%] right-[10%] w-[300px] h-[300px] bg-indigo-600/40 rounded-full blur-[80px] pointer-events-none force-animate-blob force-delay"></div>
+        <div className="absolute top-[5%] left-[10%] z-0 w-[300px] h-[300px] bg-blue-600/40 rounded-full blur-[80px] pointer-events-none force-animate-blob"></div>
+        <div className="absolute bottom-[5%] right-[10%] z-0 w-[300px] h-[300px] bg-indigo-600/40 rounded-full blur-[80px] pointer-events-none force-animate-blob force-delay"></div>
 
+        {/* --- MAIN CONTENT --- */}
+        {/* z-10 מבטיח שכל התוכן יהיה תמיד מעל האפקטים ולא ייחסם */}
         <div className="max-w-2xl w-full z-10 relative">
           <div className="text-center space-y-4 mb-12">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold tracking-wider uppercase">
@@ -93,7 +92,7 @@ export default function Home() {
               
               <button
                 onClick={handleSearch}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-blue-600/20"
+                className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-blue-600/20 z-20 relative cursor-pointer"
               >
                 Analyze
               </button>
@@ -102,7 +101,6 @@ export default function Home() {
 
           {/* --- FOOTER STATS WITH ANIMATED DOTS --- */}
           <div className="mt-12 flex justify-center items-center gap-8 text-[10px] font-bold text-gray-600 uppercase tracking-[0.3em]">
-            {/* שיניתי את NYSE לכתום (orange/amber) */}
             <div className="flex items-center gap-2">
               <span className="relative flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
