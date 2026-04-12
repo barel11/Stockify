@@ -1338,6 +1338,24 @@ export default function Home() {
           <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150" />
         </div>
 
+        <div className="fixed top-5 left-6 z-50 flex items-center gap-2.5">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" className="h-8 w-8">
+            <defs>
+              <linearGradient id="logo-g" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#3b82f6"/>
+                <stop offset="100%" stopColor="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+            <rect width="512" height="512" rx="96" fill="#0a0a0a"/>
+            <rect x="96" y="280" width="56" height="140" rx="8" fill="url(#logo-g)" opacity="0.5"/>
+            <rect x="192" y="200" width="56" height="220" rx="8" fill="url(#logo-g)" opacity="0.65"/>
+            <rect x="288" y="140" width="56" height="280" rx="8" fill="url(#logo-g)" opacity="0.8"/>
+            <rect x="384" y="80" width="56" height="340" rx="8" fill="url(#logo-g)"/>
+            <line x1="124" y1="270" x2="412" y2="70" stroke="#3b82f6" strokeWidth="12" strokeLinecap="round" opacity="0.9"/>
+          </svg>
+          <span className="text-lg font-bold tracking-tight text-white">Stockify</span>
+        </div>
+
         {loading && stockData && (
           <div className="fixed top-5 right-5 z-50 rounded-full border border-blue-500/30 bg-black/80 backdrop-blur-xl px-4 py-2 text-xs uppercase tracking-[0.25em] text-blue-300 font-bold shadow-2xl">
             Refreshing analysis...
