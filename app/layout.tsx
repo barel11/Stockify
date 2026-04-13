@@ -4,6 +4,8 @@ import { dark } from "@clerk/themes";
 import "styles/globals.css";
 import { ServiceWorkerRegistrar } from "./sw-registrar";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Stockify",
   description: "Premium stock, crypto, and forex analysis with technicals, fundamentals, and news.",
