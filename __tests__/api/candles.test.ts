@@ -35,10 +35,10 @@ describe("GET /api/candles", () => {
     expect(mockFinnhubFetch).toHaveBeenCalledWith("/stock/candle", expect.objectContaining({ symbol: "AAPL" }));
   });
 
-  it("uses forex/candles endpoint when type=forex", async () => {
+  it("uses forex/candle endpoint when type=forex", async () => {
     mockFinnhubFetch.mockResolvedValue({ s: "ok", c: [1.1] });
 
     await GET(makeRequest("/api/candles?symbol=OANDA:EUR_USD&from=100&to=200&type=forex"));
-    expect(mockFinnhubFetch).toHaveBeenCalledWith("/forex/candles", expect.objectContaining({ symbol: "OANDA:EUR_USD" }));
+    expect(mockFinnhubFetch).toHaveBeenCalledWith("/forex/candle", expect.objectContaining({ symbol: "OANDA:EUR_USD" }));
   });
 });
