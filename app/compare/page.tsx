@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent, type KeyboardEvent, type ChangeEvent } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import Background from "@/components/Background";
 import Image from "next/image";
 import { createChart, ColorType, CrosshairMode, LineSeries } from "lightweight-charts";
 import {
@@ -1015,21 +1016,7 @@ export default function ComparePage() {
   })();
 
   return (
-    <div className="bg-[#050505] text-white font-sans min-h-screen">
-      {/* Background blobs */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[5%] left-[10%] w-[500px] h-[500px] bg-blue-600/25 rounded-full blur-[120px] animate-blob" />
-        <div
-          className="absolute bottom-[5%] right-[10%] w-[450px] h-[450px] bg-indigo-600/25 rounded-full blur-[120px] animate-blob"
-          style={{ animationDelay: "2s" }}
-        />
-        <div
-          className="absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-violet-700/15 rounded-full blur-[100px] animate-blob"
-          style={{ animationDelay: "4s" }}
-        />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150" />
-      </div>
-
+    <Background>
       <Navbar />
 
       {/* Page content */}
@@ -1224,6 +1211,6 @@ export default function ComparePage() {
           )}
         </div>
       </div>
-    </div>
+    </Background>
   );
 }

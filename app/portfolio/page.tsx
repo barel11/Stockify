@@ -17,6 +17,7 @@ import {
 } from "react-icons/fi";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import Background from "@/components/Background";
 
 type SuggestionItem = { symbol: string; description: string };
 type FinnhubSearchResult = { symbol: string; description?: string; displaySymbol?: string };
@@ -176,13 +177,7 @@ export default function PortfolioPage() {
   }) : null;
 
   return (
-    <div className="bg-[#050505] text-white font-sans min-h-screen">
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[5%] left-[10%] w-[400px] h-[400px] bg-blue-600/30 rounded-full blur-[100px] animate-blob" />
-        <div className="absolute bottom-[5%] right-[10%] w-[400px] h-[400px] bg-indigo-600/30 rounded-full blur-[100px] animate-blob" style={{ animationDelay: "2s" }} />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150" />
-      </div>
-
+    <Background>
       <Navbar />
 
       <div className="relative z-10 pt-24 px-6 pb-32">
@@ -464,6 +459,6 @@ export default function PortfolioPage() {
           )}
         </div>
       </div>
-    </div>
+    </Background>
   );
 }

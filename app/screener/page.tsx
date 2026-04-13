@@ -12,6 +12,7 @@ import {
   FiChevronUp,
 } from "react-icons/fi";
 import Navbar from "@/components/Navbar";
+import Background from "@/components/Background";
 
 type QuoteData = { c: number; d: number; dp: number; h: number; l: number; o: number; pc: number };
 type ProfileData = {
@@ -140,13 +141,7 @@ export default function ScreenerPage() {
   const sectors = Array.from(new Set(results.map((r) => r.profile?.finnhubIndustry).filter(Boolean))) as string[];
 
   return (
-    <div className="bg-[#050505] text-white font-sans min-h-screen">
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[5%] left-[10%] w-[500px] h-[500px] bg-blue-600/25 rounded-full blur-[120px] animate-blob" />
-        <div className="absolute bottom-[5%] right-[10%] w-[450px] h-[450px] bg-indigo-600/25 rounded-full blur-[120px] animate-blob" style={{ animationDelay: "2s" }} />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150" />
-      </div>
-
+    <Background>
       <Navbar />
 
       <div className="relative z-10 pt-28 px-4 sm:px-6 pb-32">
@@ -298,6 +293,6 @@ export default function ScreenerPage() {
           )}
         </div>
       </div>
-    </div>
+    </Background>
   );
 }

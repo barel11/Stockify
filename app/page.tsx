@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 import { useSearchParams } from "next/navigation";
@@ -47,6 +46,7 @@ import { useUser } from "@clerk/nextjs";
 import { exportToPDF, exportToCSV } from "@/lib/export";
 import { useAlertChecker } from "@/lib/use-alert-checker";
 import Navbar from "@/components/Navbar";
+import Background from "@/components/Background";
 import StockChart from "@/components/StockChart";
 
 // API calls go through server-side routes in /api/*
@@ -962,7 +962,6 @@ function HomeContent() {
   // Browser notifications for price alerts
   useAlertChecker(alerts, !!isSignedIn);
 
-  const glowRef = useRef<HTMLDivElement>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1087,12 +1086,6 @@ function HomeContent() {
       if (!res.ok) return;
       setAlerts((prev) => prev.filter((a) => a.id !== id));
     } catch {}
-  };
-
-  const handleMouseMove = (e: MouseEvent<HTMLElement>) => {
-    if (glowRef.current) {
-      glowRef.current.style.transform = `translate(${e.clientX - 150}px, ${e.clientY - 150}px)`;
-    }
   };
 
   const fetchSuggestions = useCallback(async (value: string) => {
@@ -1513,18 +1506,7 @@ function HomeContent() {
   return (
     <>
       <ScrollToTopButton />
-      <div onMouseMove={handleMouseMove} className="bg-[#050505] text-white font-sans relative min-h-screen">
-        <div className="fixed inset-0 z-0 pointer-events-none">
-          <div
-            ref={glowRef}
-            className="absolute top-0 left-0 h-[300px] w-[300px] rounded-full bg-gradient-to-r from-blue-600/20 to-indigo-600/20 blur-[80px] transition-transform duration-75 ease-out"
-            style={{ transform: "translate(-500px, -500px)" }}
-          />
-          <div className="absolute top-[5%] left-[10%] w-[400px] h-[400px] bg-blue-600/30 rounded-full blur-[100px] force-animate-blob" />
-          <div className="absolute bottom-[5%] right-[10%] w-[400px] h-[400px] bg-indigo-600/30 rounded-full blur-[100px] force-animate-blob force-delay" />
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150" />
-        </div>
-
+      <Background>
         <Navbar />
 
         {loading && stockData && (
@@ -2915,7 +2897,7 @@ function HomeContent() {
             </p>
           </div>
         </footer>
-      </div>
+      </Background>
     </>
   );
 }
