@@ -2,6 +2,7 @@
 
 import {
   Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -47,7 +48,7 @@ import { exportToPDF, exportToCSV } from "@/lib/export";
 import { useAlertChecker } from "@/lib/use-alert-checker";
 import Navbar from "@/components/Navbar";
 import Background from "@/components/Background";
-import HistoricalChart from "@/components/HistoricalChart";
+const HistoricalChart = lazy(() => import("@/components/HistoricalChart"));
 import { useCurrency } from "@/lib/use-currency";
 
 // API calls go through server-side routes in /api/*
@@ -2202,7 +2203,9 @@ function HomeContent() {
                     subtitle="Custom chart with time range selector. Toggle between candlestick and line views."
                     icon={<FiBarChart2 className="text-indigo-500" />}
                   >
-                    <HistoricalChart symbol={ticker} assetType={analysis.assetType} />
+                    <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-black/40 backdrop-blur-xl p-5 h-[400px] animate-pulse" />}>
+                      <HistoricalChart symbol={ticker} assetType={analysis.assetType} />
+                    </Suspense>
                   </SectionCard>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-4">

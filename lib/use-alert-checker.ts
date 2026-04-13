@@ -57,8 +57,24 @@ export function useAlertChecker(alerts: AlertItem[], isSignedIn: boolean) {
                 new Notification(`Stockify Alert: ${alert.symbol}`, {
                   body: `${alert.symbol} is now $${quote.c.toFixed(2)} — ${alert.direction === "above" ? "above" : "below"} your target of $${alert.target_price.toFixed(2)}`,
                   icon: "/icons/icon-192.png",
+                  tag: `alert-${alert.id}`,
+                  requireInteraction: true,
                 });
               }
+
+              // Play alert sound
+              try {
+                const audio = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbsGczIS5wr+DRozgiHTyS1+a1ZTocHlyq8NqPPRAYS5DR6qljJBYtervk0n9GFiZQlOXTdj4TL3m24s1/Pw0oWqft0GkuCRw+lOTYdzUJG0Cb7Nt/MwMPJ1uo7NFgIwAXQJ");
+                audio.volume = 0.3;
+                audio.play().catch(() => {});
+              } catch {}
+
+              // Mark as triggered in API
+              fetch("/api/alerts", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: alert.id }),
+              }).catch(() => {});
             }
           }
         } catch {
