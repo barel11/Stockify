@@ -47,6 +47,7 @@ import { exportToPDF, exportToCSV } from "@/lib/export";
 import { useAlertChecker } from "@/lib/use-alert-checker";
 import Navbar from "@/components/Navbar";
 import Background from "@/components/Background";
+import HistoricalChart from "@/components/HistoricalChart";
 import { useCurrency } from "@/lib/use-currency";
 
 // API calls go through server-side routes in /api/*
@@ -2196,6 +2197,14 @@ function HomeContent() {
                     <TradingViewChart symbol={ticker} />
                   </SectionCard>
 
+                  <SectionCard
+                    title="Performance"
+                    subtitle="Custom chart with time range selector. Toggle between candlestick and line views."
+                    icon={<FiBarChart2 className="text-indigo-500" />}
+                  >
+                    <HistoricalChart symbol={ticker} assetType={analysis.assetType} />
+                  </SectionCard>
+
                   <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-4">
                     <MetricCard label="Open" value={formatPrice(stockData.o, analysis.assetType)} hint="Today's opening price" accent="blue" />
                     <MetricCard label="Prev Close" value={formatPrice(stockData.pc, analysis.assetType)} hint="Yesterday's closing price" />
@@ -3050,11 +3059,36 @@ function HomeContent() {
                 >
                   {analysis.assetType === "stock" ? (
                     newsData.length > 0 ? (
-                      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {newsData.map((item, index) => (
-                          <NewsCard key={`${item.id ?? item.headline}-${index}`} item={item} />
-                        ))}
-                      </div>
+                      <>
+                        {/* Sentiment distribution bar */}
+                        {(() => {
+                          const sentiments = newsData.map((n) => analyzeSentiment(`${n.headline ?? ""} ${n.summary ?? ""}`));
+                          const bullish = sentiments.filter((s) => s.label === "Bullish").length;
+                          const bearish = sentiments.filter((s) => s.label === "Bearish").length;
+                          const neutral = sentiments.filter((s) => s.label === "Neutral").length;
+                          const total = sentiments.length;
+                          return (
+                            <div className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-5 mb-6">
+                              <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold mb-3">Sentiment Distribution</p>
+                              <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden mb-3">
+                                {bullish > 0 && <div className="bg-emerald-500 h-full rounded-l-full transition-all" style={{ width: `${(bullish / total) * 100}%` }} />}
+                                {neutral > 0 && <div className="bg-gray-500 h-full transition-all" style={{ width: `${(neutral / total) * 100}%` }} />}
+                                {bearish > 0 && <div className="bg-rose-500 h-full rounded-r-full transition-all" style={{ width: `${(bearish / total) * 100}%` }} />}
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] font-bold">
+                                <span className="text-emerald-400">Bullish {bullish} ({total > 0 ? ((bullish / total) * 100).toFixed(0) : 0}%)</span>
+                                <span className="text-gray-400">Neutral {neutral} ({total > 0 ? ((neutral / total) * 100).toFixed(0) : 0}%)</span>
+                                <span className="text-rose-400">Bearish {bearish} ({total > 0 ? ((bearish / total) * 100).toFixed(0) : 0}%)</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                          {newsData.map((item, index) => (
+                            <NewsCard key={`${item.id ?? item.headline}-${index}`} item={item} />
+                          ))}
+                        </div>
+                      </>
                     ) : (
                       <EmptyState
                         title="No recent company headlines"

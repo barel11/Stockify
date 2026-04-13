@@ -18,6 +18,7 @@ import {
   FiActivity,
   FiAward,
   FiMinus,
+  FiPlus,
   FiTarget,
   FiShield,
 } from "react-icons/fi";
@@ -965,21 +966,27 @@ function useTickerAutocomplete() {
 export default function ComparePage() {
   const inputA = useTickerAutocomplete();
   const inputB = useTickerAutocomplete();
+  const inputC = useTickerAutocomplete();
+  const inputD = useTickerAutocomplete();
+  const [extraCount, setExtraCount] = useState(0); // 0, 1, or 2 extra inputs
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<[TickerData, TickerData] | null>(null);
+  const [results, setResults] = useState<TickerData[] | null>(null);
   const inputBRef = useRef<HTMLInputElement>(null);
+  const inputCRef = useRef<HTMLInputElement>(null);
+  const inputDRef = useRef<HTMLInputElement>(null);
+
+  const allInputs = [inputA, inputB, ...(extraCount >= 1 ? [inputC] : []), ...(extraCount >= 2 ? [inputD] : [])];
 
   const handleCompare = async (e?: FormEvent) => {
     e?.preventDefault();
-    const a = inputA.value.trim().toUpperCase();
-    const b = inputB.value.trim().toUpperCase();
-    if (!a || !b) {
-      setError("Please enter both ticker symbols.");
+    const tickers = allInputs.map((inp) => inp.value.trim().toUpperCase()).filter(Boolean);
+    if (tickers.length < 2) {
+      setError("Please enter at least two ticker symbols.");
       return;
     }
-    if (a === b) {
-      setError("Please enter two different ticker symbols.");
+    if (new Set(tickers).size !== tickers.length) {
+      setError("Please enter unique ticker symbols.");
       return;
     }
     setError(null);
@@ -988,9 +995,11 @@ export default function ComparePage() {
 
     try {
       // Fetch sequentially to avoid Finnhub rate limits
-      const dataA = await fetchTicker(a);
-      const dataB = await fetchTicker(b);
-      setResults([dataA, dataB]);
+      const data: TickerData[] = [];
+      for (const t of tickers) {
+        data.push(await fetchTicker(t));
+      }
+      setResults(data);
     } catch {
       setError("Failed to fetch data. Please try again.");
     } finally {
@@ -1010,11 +1019,25 @@ export default function ComparePage() {
   };
 
   const handleKeyDownB = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      if (extraCount >= 1 && !inputC.value.trim()) inputCRef.current?.focus();
+      else handleCompare();
+    }
+  };
+
+  const handleKeyDownC = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      if (extraCount >= 2 && !inputD.value.trim()) inputDRef.current?.focus();
+      else handleCompare();
+    }
+  };
+
+  const handleKeyDownD = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleCompare();
   };
 
   const winner: "left" | "right" | "tie" | null = (() => {
-    if (!results) return null;
+    if (!results || results.length !== 2) return null;
     const [a, b] = results;
     const dpA = a.quote?.dp ?? null;
     const dpB = b.quote?.dp ?? null;
@@ -1037,7 +1060,7 @@ export default function ComparePage() {
             <h1 className="text-4xl md:text-5xl font-black tracking-tight">Compare</h1>
           </div>
           <p className="text-gray-400 text-sm mb-10">
-            Side-by-side market comparison for any two tickers.
+            Side-by-side market comparison for up to four tickers.
           </p>
 
           {/* Search form */}
@@ -1098,6 +1121,80 @@ export default function ComparePage() {
                 />
               </div>
 
+              {/* Ticker C */}
+              {extraCount >= 1 && (
+                <>
+                  <div className="flex items-center justify-center shrink-0">
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">VS</span>
+                  </div>
+                  <div className="relative flex-1">
+                    <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none z-10" />
+                    <input
+                      ref={inputCRef}
+                      type="text"
+                      placeholder="Ticker C (e.g. GOOG)"
+                      value={inputC.value}
+                      onChange={inputC.handleChange}
+                      onFocus={inputC.handleFocus}
+                      onBlur={inputC.handleBlur}
+                      onKeyDown={handleKeyDownC}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] pl-10 pr-4 py-3 text-sm font-bold text-white placeholder:text-gray-600 focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.07] transition-all"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                    />
+                    <SuggestionDropdown suggestions={inputC.suggestions} visible={inputC.showSuggestions} onSelect={inputC.selectSuggestion} />
+                  </div>
+                </>
+              )}
+
+              {/* Ticker D */}
+              {extraCount >= 2 && (
+                <>
+                  <div className="flex items-center justify-center shrink-0">
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">VS</span>
+                  </div>
+                  <div className="relative flex-1">
+                    <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none z-10" />
+                    <input
+                      ref={inputDRef}
+                      type="text"
+                      placeholder="Ticker D (e.g. AMZN)"
+                      value={inputD.value}
+                      onChange={inputD.handleChange}
+                      onFocus={inputD.handleFocus}
+                      onBlur={inputD.handleBlur}
+                      onKeyDown={handleKeyDownD}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] pl-10 pr-4 py-3 text-sm font-bold text-white placeholder:text-gray-600 focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.07] transition-all"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                    />
+                    <SuggestionDropdown suggestions={inputD.suggestions} visible={inputD.showSuggestions} onSelect={inputD.selectSuggestion} />
+                  </div>
+                </>
+              )}
+
+              {/* Add/Remove ticker buttons + Compare button */}
+              {extraCount < 2 && (
+                <button
+                  type="button"
+                  onClick={() => setExtraCount((c) => Math.min(c + 1, 2))}
+                  className="shrink-0 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-gray-400 hover:text-white hover:border-white/20 transition-all"
+                  title="Add another ticker"
+                >
+                  <FiPlus size={16} />
+                </button>
+              )}
+              {extraCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setExtraCount((c) => Math.max(c - 1, 0)); if (extraCount === 2) inputD.setValue(""); else inputC.setValue(""); }}
+                  className="shrink-0 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-gray-400 hover:text-rose-400 hover:border-rose-500/30 transition-all"
+                  title="Remove last ticker"
+                >
+                  <FiMinus size={16} />
+                </button>
+              )}
+
               {/* Compare button */}
               <button
                 type="submit"
@@ -1147,49 +1244,55 @@ export default function ComparePage() {
           ) : results ? (
             <div className="space-y-6">
               {/* Winner announcement banner */}
-              {winner && winner !== "tie" && (
-                <div className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 backdrop-blur-xl px-6 py-4 flex items-center gap-3">
-                  <FiAward className="text-emerald-400 text-xl shrink-0" />
-                  <div>
-                    <p className="text-sm font-black text-emerald-300">
-                      {winner === "left" ? results[0].symbol : results[1].symbol} is outperforming today
-                    </p>
-                    <p className="text-xs text-emerald-400/60 mt-0.5">
-                      Based on daily % change (
-                      {winner === "left"
-                        ? `${results[0].quote?.dp != null ? (results[0].quote.dp >= 0 ? "+" : "") + results[0].quote.dp.toFixed(2) + "%" : "N/A"} vs ${results[1].quote?.dp != null ? (results[1].quote.dp >= 0 ? "+" : "") + results[1].quote.dp.toFixed(2) + "%" : "N/A"}`
-                        : `${results[1].quote?.dp != null ? (results[1].quote.dp >= 0 ? "+" : "") + results[1].quote.dp.toFixed(2) + "%" : "N/A"} vs ${results[0].quote?.dp != null ? (results[0].quote.dp >= 0 ? "+" : "") + results[0].quote.dp.toFixed(2) + "%" : "N/A"}`}
-                      )
-                    </p>
+              {(() => {
+                const sorted = [...results].filter((r) => r.quote?.dp != null).sort((a, b) => (b.quote?.dp ?? 0) - (a.quote?.dp ?? 0));
+                const best = sorted[0];
+                if (!best || sorted.length < 2) return null;
+                const allSame = sorted.every((r) => Math.abs((r.quote?.dp ?? 0) - (best.quote?.dp ?? 0)) < 0.001);
+                if (allSame) {
+                  return (
+                    <div className="rounded-3xl border border-blue-500/20 bg-blue-950/20 backdrop-blur-xl px-6 py-4 flex items-center gap-3">
+                      <FiTrendingUp className="text-blue-400 text-xl shrink-0" />
+                      <p className="text-sm font-black text-blue-300">All tickers are neck-and-neck today.</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 backdrop-blur-xl px-6 py-4 flex items-center gap-3">
+                    <FiAward className="text-emerald-400 text-xl shrink-0" />
+                    <div>
+                      <p className="text-sm font-black text-emerald-300">{best.symbol} is outperforming today</p>
+                      <p className="text-xs text-emerald-400/60 mt-0.5">
+                        {sorted.map((r) => `${r.symbol}: ${r.quote?.dp != null ? (r.quote.dp >= 0 ? "+" : "") + r.quote.dp.toFixed(2) + "%" : "N/A"}`).join(" | ")}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {winner === "tie" && (
-                <div className="rounded-3xl border border-blue-500/20 bg-blue-950/20 backdrop-blur-xl px-6 py-4 flex items-center gap-3">
-                  <FiTrendingUp className="text-blue-400 text-xl shrink-0" />
-                  <p className="text-sm font-black text-blue-300">
-                    These two are neck-and-neck — essentially the same daily move.
-                  </p>
-                </div>
-              )}
+                );
+              })()}
 
-              {/* Cards side by side */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <TickerCard data={results[0]} isWinner={winner === "left"} />
-                <TickerCard data={results[1]} isWinner={winner === "right"} />
+              {/* Cards grid — adapts to number of results */}
+              <div className={`grid grid-cols-1 gap-5 ${results.length === 2 ? "md:grid-cols-2" : results.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-4"}`}>
+                {results.map((r) => {
+                  const bestDp = Math.max(...results.map((t) => t.quote?.dp ?? -Infinity));
+                  return <TickerCard key={r.symbol} data={r} isWinner={(r.quote?.dp ?? -Infinity) === bestDp && results.length > 1} />;
+                })}
               </div>
 
-              {/* Head-to-head tables */}
-              <ComparisonTable left={results[0]} right={results[1]} />
+              {/* Head-to-head table (only for 2 tickers) */}
+              {results.length === 2 && (
+                <ComparisonTable left={results[0]} right={results[1]} />
+              )}
 
-              {/* Comparison chart */}
-              <ComparisonChart symbolA={results[0].symbol} symbolB={results[1].symbol} />
-
-              {/* Historical % performance */}
-              <PerformanceCompare symbolA={results[0].symbol} symbolB={results[1].symbol} />
+              {/* Performance chart */}
+              {results.length === 2 && (
+                <>
+                  <ComparisonChart symbolA={results[0].symbol} symbolB={results[1].symbol} />
+                  <PerformanceCompare symbolA={results[0].symbol} symbolB={results[1].symbol} />
+                </>
+              )}
 
               {/* Quick actions */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className={`grid grid-cols-1 gap-3 ${results.length <= 2 ? "sm:grid-cols-2" : results.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2 xl:grid-cols-4"}`}>
                 {results.map((ticker) => (
                   <Link
                     key={ticker.symbol}
