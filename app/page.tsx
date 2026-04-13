@@ -30,9 +30,19 @@ import {
   FiExternalLink,
   FiChevronUp,
   FiStar,
+  FiShare2,
+  FiClock,
+  FiCopy,
+  FiCheck,
+  FiBell,
+  FiTrash2,
+  FiDownload,
+  FiFileText,
 } from "react-icons/fi";
 import Image from "next/image";
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { exportToPDF, exportToCSV } from "@/lib/export";
+import { useAlertChecker } from "@/lib/use-alert-checker";
 
 // API calls go through server-side routes in /api/*
 
@@ -169,6 +179,16 @@ type ProgressBarProps = {
 type EmptyStateProps = {
   title: string;
   description: string;
+};
+
+type AlertItem = {
+  id: string;
+  user_id: string;
+  symbol: string;
+  target_price: number;
+  direction: "above" | "below";
+  triggered: boolean;
+  created_at: string;
 };
 
 
@@ -817,7 +837,47 @@ function TradingViewChart({ symbol }: { symbol: string }) {
   );
 }
 
+const BULLISH_WORDS = [
+  "surge", "soar", "rally", "upgrade", "beat", "exceed", "record", "outperform",
+  "bullish", "growth", "profit", "gain", "positive", "strong", "buy", "boost",
+  "breakthrough", "innovation", "upbeat", "optimistic", "rise", "jump", "climbs",
+  "recovery", "expand", "momentum", "upside", "dividend", "partnership", "deal",
+];
+const BEARISH_WORDS = [
+  "crash", "plunge", "decline", "downgrade", "miss", "lose", "loss", "bearish",
+  "layoff", "cut", "warning", "risk", "fall", "drop", "weak", "sell", "concern",
+  "recession", "default", "investigation", "fraud", "lawsuit", "penalty", "debt",
+  "bankruptcy", "inflation", "slowdown", "negative", "pressure", "tumble",
+];
+
+function analyzeSentiment(text: string): { score: number; label: "Bullish" | "Bearish" | "Neutral" } {
+  const lower = text.toLowerCase();
+  let score = 0;
+  for (const word of BULLISH_WORDS) if (lower.includes(word)) score++;
+  for (const word of BEARISH_WORDS) if (lower.includes(word)) score--;
+  if (score > 0) return { score, label: "Bullish" };
+  if (score < 0) return { score, label: "Bearish" };
+  return { score: 0, label: "Neutral" };
+}
+
+function SentimentBadge({ text }: { text: string }) {
+  const { label } = analyzeSentiment(text);
+  const styles = {
+    Bullish: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+    Bearish: "border-rose-500/30 bg-rose-500/10 text-rose-400",
+    Neutral: "border-gray-500/30 bg-gray-500/10 text-gray-400",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.2em] font-bold ${styles[label]}`}>
+      {label === "Bullish" ? <FiArrowUp size={8} /> : label === "Bearish" ? <FiArrowDown size={8} /> : null}
+      {label}
+    </span>
+  );
+}
+
 function NewsCard({ item }: { item: NewsItem }) {
+  const fullText = `${item.headline ?? ""} ${item.summary ?? ""}`;
+
   return (
     <a
       href={item.url}
@@ -827,8 +887,11 @@ function NewsCard({ item }: { item: NewsItem }) {
     >
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-gray-400 font-bold">
-            <span>{item.source || "News"}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-gray-400 font-bold">
+              <span>{item.source || "News"}</span>
+            </div>
+            <SentimentBadge text={fullText} />
           </div>
           <p className="mt-3 text-xs text-gray-500">{formatDateTime(item.datetime)}</p>
         </div>
@@ -878,12 +941,36 @@ function HomeContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  // Price alerts
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [showAlertForm, setShowAlertForm] = useState(false);
+  const [alertTargetPrice, setAlertTargetPrice] = useState("");
+  const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+
+  // Browser notifications for price alerts
+  useAlertChecker(alerts, !!isSignedIn);
 
   const glowRef = useRef<HTMLDivElement>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchCounterRef = useRef(0);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("stockify-recent");
+      if (stored) setRecentSearches(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  const saveRecentSearch = (symbol: string) => {
+    const updated = [symbol, ...recentSearches.filter((s) => s !== symbol)].slice(0, 5);
+    setRecentSearches(updated);
+    try { localStorage.setItem("stockify-recent", JSON.stringify(updated)); } catch {}
+  };
 
   useEffect(() => {
     return () => {
@@ -921,6 +1008,19 @@ function HomeContent() {
       .catch(() => {});
   }, [isSignedIn]);
 
+  // Fetch alerts whenever the signed-in user changes ticker
+  useEffect(() => {
+    if (!isSignedIn || !ticker) return;
+    fetch("/api/alerts")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAlerts(data.filter((a: AlertItem) => a.symbol === ticker));
+        }
+      })
+      .catch(() => {});
+  }, [isSignedIn, ticker]);
+
   const isInWatchlist = ticker ? watchlist.includes(ticker) : false;
 
   const toggleWatchlist = async () => {
@@ -947,6 +1047,37 @@ function HomeContent() {
         setWatchlist((prev) => prev.filter((s) => s !== ticker));
       }
     }
+  };
+
+  const createAlert = async () => {
+    if (!isSignedIn || !ticker || !alertTargetPrice) return;
+    const price = parseFloat(alertTargetPrice);
+    if (isNaN(price) || price <= 0) return;
+
+    try {
+      const res = await fetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: ticker, targetPrice: price, direction: alertDirection }),
+      });
+      if (!res.ok) return;
+      const newAlert: AlertItem = await res.json();
+      setAlerts((prev) => [newAlert, ...prev]);
+      setShowAlertForm(false);
+      setAlertTargetPrice("");
+    } catch {}
+  };
+
+  const deleteAlert = async (id: string) => {
+    try {
+      const res = await fetch("/api/alerts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) return;
+      setAlerts((prev) => prev.filter((a) => a.id !== id));
+    } catch {}
   };
 
   const handleMouseMove = (e: MouseEvent<HTMLElement>) => {
@@ -1161,6 +1292,7 @@ function HomeContent() {
       setEarningsData(normalizeEarnings(earningsRes ?? []));
       setPriceTargetData(priceTargetRes && Object.keys(priceTargetRes).length ? priceTargetRes : null);
       setActiveTab("overview");
+      saveRecentSearch(resolvedSymbol);
 
       setTimeout(() => {
         analysisRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1405,12 +1537,21 @@ function HomeContent() {
           <div className="flex items-center gap-3">
             {isSignedIn ? (
               <>
-                <a
-                  href="/watchlist"
-                  className="rounded-full border border-white/10 bg-white/[0.05] backdrop-blur-xl px-4 py-2 text-xs font-bold tracking-wider uppercase text-gray-300 hover:border-blue-500/30 hover:text-white transition-all"
-                >
-                  Watchlist
-                </a>
+                {[
+                  { href: "/compare", label: "Compare" },
+                  { href: "/watchlist", label: "Watchlist" },
+                  { href: "/portfolio", label: "Portfolio" },
+                  { href: "/screener", label: "Screener" },
+                  { href: "/heatmap", label: "Heatmap" },
+                ].map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    className="rounded-full border border-white/10 bg-white/[0.05] backdrop-blur-xl px-4 py-2 text-xs font-bold tracking-wider uppercase text-gray-300 hover:border-blue-500/30 hover:text-white transition-all"
+                  >
+                    {link.label}
+                  </a>
+                ))}
                 <UserButton />
               </>
             ) : (
@@ -1501,6 +1642,23 @@ function HomeContent() {
               </div>
             )}
 
+            {recentSearches.length > 0 && !stockData && (
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                <span className="text-[10px] uppercase tracking-[0.25em] text-gray-600 font-bold flex items-center gap-1.5">
+                  <FiClock size={12} /> Recent
+                </span>
+                {recentSearches.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setTicker(s); handleSearch(s); }}
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-gray-400 hover:border-blue-500/30 hover:text-blue-300 transition-all"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="mt-12 flex flex-wrap justify-center items-center gap-6 md:gap-8 text-[10px] font-bold text-gray-600 uppercase tracking-[0.3em]">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-3 w-3">
@@ -1574,18 +1732,178 @@ function HomeContent() {
                         {companyData?.name || cleanSymbol(ticker)}
                       </h2>
 
-                      {isSignedIn && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {isSignedIn && (
+                          <button
+                            onClick={toggleWatchlist}
+                            className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
+                              isInWatchlist
+                                ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                                : "border-white/10 bg-white/[0.05] text-gray-400 hover:border-blue-500/30 hover:text-white"
+                            }`}
+                          >
+                            <FiStar className={isInWatchlist ? "fill-amber-400" : ""} />
+                            {isInWatchlist ? "In Watchlist" : "Add to Watchlist"}
+                          </button>
+                        )}
                         <button
-                          onClick={toggleWatchlist}
-                          className={`mt-3 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
-                            isInWatchlist
-                              ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                              : "border-white/10 bg-white/[0.05] text-gray-400 hover:border-blue-500/30 hover:text-white"
-                          }`}
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/?ticker=${encodeURIComponent(ticker)}`);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-400 hover:border-blue-500/30 hover:text-white transition-all"
                         >
-                          <FiStar className={isInWatchlist ? "fill-amber-400" : ""} />
-                          {isInWatchlist ? "In Watchlist" : "Add to Watchlist"}
+                          {copied ? <FiCheck className="text-emerald-400" /> : <FiShare2 />}
+                          {copied ? "Copied!" : "Share"}
                         </button>
+
+                        {isSignedIn && (
+                          <button
+                            onClick={() => {
+                              setShowAlertForm((v) => !v);
+                              if (!alertTargetPrice && stockData?.c) {
+                                setAlertTargetPrice(stockData.c.toString());
+                              }
+                            }}
+                            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-400 hover:border-blue-500/30 hover:text-white transition-all"
+                          >
+                            <FiBell />
+                            Set Alert
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (!stockData || !companyData) return;
+                            const rec = recommendationData[0];
+                            exportToPDF({
+                              symbol: ticker,
+                              companyName: companyData.name ?? ticker,
+                              price: stockData.c,
+                              change: stockData.d,
+                              changePercent: stockData.dp,
+                              open: stockData.o,
+                              high: stockData.h,
+                              low: stockData.l,
+                              prevClose: stockData.pc,
+                              marketCap: isNumber(companyData.marketCapitalization) ? formatCompactNumber(companyData.marketCapitalization * 1e6, "$") : undefined,
+                              exchange: companyData.exchange ?? undefined,
+                              industry: companyData.finnhubIndustry ?? undefined,
+                              pe: isNumber(basicFinancials?.metric?.peBasicExclExtraTTM) ? basicFinancials!.metric!.peBasicExclExtraTTM!.toFixed(2) : undefined,
+                              eps: isNumber(basicFinancials?.metric?.epsBasicExclExtraItemsTTM) ? `$${basicFinancials!.metric!.epsBasicExclExtraItemsTTM!.toFixed(2)}` : undefined,
+                              week52High: isNumber(basicFinancials?.metric?.["52WeekHigh"]) ? `$${basicFinancials!.metric!["52WeekHigh"]!.toFixed(2)}` : undefined,
+                              week52Low: isNumber(basicFinancials?.metric?.["52WeekLow"]) ? `$${basicFinancials!.metric!["52WeekLow"]!.toFixed(2)}` : undefined,
+                              recommendations: rec ? { buy: rec.strongBuy + rec.buy, hold: rec.hold, sell: rec.sell + rec.strongSell } : undefined,
+                              priceTarget: priceTargetData ? { low: isNumber(priceTargetData.targetLow) ? `$${priceTargetData.targetLow!.toFixed(2)}` : undefined, mean: isNumber(priceTargetData.targetMean) ? `$${priceTargetData.targetMean!.toFixed(2)}` : undefined, high: isNumber(priceTargetData.targetHigh) ? `$${priceTargetData.targetHigh!.toFixed(2)}` : undefined } : undefined,
+                            });
+                          }}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-400 hover:border-blue-500/30 hover:text-white transition-all"
+                        >
+                          <FiDownload />
+                          PDF
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (!stockData || !companyData) return;
+                            const rec = recommendationData[0];
+                            exportToCSV({
+                              symbol: ticker,
+                              companyName: companyData.name ?? ticker,
+                              price: stockData.c,
+                              change: stockData.d,
+                              changePercent: stockData.dp,
+                              open: stockData.o,
+                              high: stockData.h,
+                              low: stockData.l,
+                              prevClose: stockData.pc,
+                              marketCap: isNumber(companyData.marketCapitalization) ? formatCompactNumber(companyData.marketCapitalization * 1e6, "$") : undefined,
+                              exchange: companyData.exchange ?? undefined,
+                              industry: companyData.finnhubIndustry ?? undefined,
+                              pe: isNumber(basicFinancials?.metric?.peBasicExclExtraTTM) ? basicFinancials!.metric!.peBasicExclExtraTTM!.toFixed(2) : undefined,
+                              eps: isNumber(basicFinancials?.metric?.epsBasicExclExtraItemsTTM) ? `$${basicFinancials!.metric!.epsBasicExclExtraItemsTTM!.toFixed(2)}` : undefined,
+                              week52High: isNumber(basicFinancials?.metric?.["52WeekHigh"]) ? `$${basicFinancials!.metric!["52WeekHigh"]!.toFixed(2)}` : undefined,
+                              week52Low: isNumber(basicFinancials?.metric?.["52WeekLow"]) ? `$${basicFinancials!.metric!["52WeekLow"]!.toFixed(2)}` : undefined,
+                              recommendations: rec ? { buy: rec.strongBuy + rec.buy, hold: rec.hold, sell: rec.sell + rec.strongSell } : undefined,
+                              priceTarget: priceTargetData ? { low: isNumber(priceTargetData.targetLow) ? `$${priceTargetData.targetLow!.toFixed(2)}` : undefined, mean: isNumber(priceTargetData.targetMean) ? `$${priceTargetData.targetMean!.toFixed(2)}` : undefined, high: isNumber(priceTargetData.targetHigh) ? `$${priceTargetData.targetHigh!.toFixed(2)}` : undefined } : undefined,
+                            });
+                          }}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-400 hover:border-blue-500/30 hover:text-white transition-all"
+                        >
+                          <FiFileText />
+                          CSV
+                        </button>
+                      </div>
+
+                      {isSignedIn && showAlertForm && (
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3 max-w-sm">
+                          <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-1.5">
+                            <FiBell size={11} /> Price Alert
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="Target price"
+                              value={alertTargetPrice}
+                              onChange={(e) => setAlertTargetPrice(e.target.value)}
+                              className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-gray-600 outline-none focus:border-blue-500/50 transition-all"
+                            />
+                            <select
+                              value={alertDirection}
+                              onChange={(e) => setAlertDirection(e.target.value as "above" | "below")}
+                              className="shrink-0 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-all"
+                            >
+                              <option value="above">Above</option>
+                              <option value="below">Below</option>
+                            </select>
+                          </div>
+                          <button
+                            onClick={createAlert}
+                            disabled={!alertTargetPrice}
+                            className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white text-xs font-bold uppercase tracking-wider py-2 transition-all"
+                          >
+                            Create Alert
+                          </button>
+                        </div>
+                      )}
+
+                      {isSignedIn && alerts.length > 0 && (
+                        <div className="mt-4 space-y-2 max-w-sm">
+                          <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-1.5">
+                            <FiBell size={11} /> Active Alerts
+                          </p>
+                          {alerts.map((alert) => (
+                            <div
+                              key={alert.id}
+                              className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 flex items-center justify-between gap-3"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                                    alert.triggered
+                                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                                      : alert.direction === "above"
+                                      ? "border-blue-500/30 bg-blue-500/10 text-blue-400"
+                                      : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+                                  }`}
+                                >
+                                  {alert.triggered ? "Triggered" : alert.direction === "above" ? "Above" : "Below"}
+                                </span>
+                                <span className="text-sm font-bold text-white break-all">
+                                  {formatPrice(alert.target_price, analysis?.assetType ?? "stock")}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => deleteAlert(alert.id)}
+                                className="shrink-0 rounded-full p-1.5 border border-white/10 bg-white/[0.05] text-gray-500 hover:border-rose-500/30 hover:text-rose-400 transition-all"
+                                aria-label="Delete alert"
+                              >
+                                <FiTrash2 size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       )}
 
                       <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-400 min-w-0">
@@ -2439,9 +2757,22 @@ function HomeContent() {
                   subtitle="Latest news articles about this company."
                   icon={<FiGlobe className="text-blue-400" />}
                   headerRight={
-                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-gray-400 font-bold">
-                      {newsData.length} headlines
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {newsData.length > 0 && (() => {
+                        const scores = newsData.map((n) => analyzeSentiment(`${n.headline ?? ""} ${n.summary ?? ""}`).score);
+                        const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
+                        const label = avg > 0.3 ? "Bullish" : avg < -0.3 ? "Bearish" : "Neutral";
+                        const color = avg > 0.3 ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" : avg < -0.3 ? "text-rose-400 border-rose-500/30 bg-rose-500/10" : "text-gray-400 border-white/10 bg-white/[0.03]";
+                        return (
+                          <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.25em] font-bold ${color}`}>
+                            Sentiment: {label}
+                          </span>
+                        );
+                      })()}
+                      <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[10px] uppercase tracking-[0.25em] text-gray-400 font-bold">
+                        {newsData.length} headlines
+                      </span>
+                    </div>
                   }
                 >
                   {analysis.assetType === "stock" ? (

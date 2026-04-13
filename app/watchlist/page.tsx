@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { FiStar, FiArrowUp, FiArrowDown, FiTrash2, FiSearch } from "react-icons/fi";
+import { FiStar, FiArrowUp, FiArrowDown, FiTrash2, FiSearch, FiTrendingUp, FiTrendingDown, FiBarChart2, FiWifi } from "react-icons/fi";
 import Link from "next/link";
+import { useLivePrices } from "@/lib/use-live-prices";
 
 type WatchlistItem = {
   id: string;
@@ -26,6 +27,15 @@ export default function WatchlistPage() {
   const { isSignedIn } = useUser();
   const [items, setItems] = useState<WatchlistCardData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [wsToken, setWsToken] = useState("");
+
+  // Fetch WebSocket token
+  useEffect(() => {
+    fetch("/api/ws-token").then((r) => r.json()).then((d) => setWsToken(d.token ?? "")).catch(() => {});
+  }, []);
+
+  const liveSymbols = items.map((i) => i.symbol);
+  const { prices: livePrices, connected } = useLivePrices(liveSymbols, wsToken);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -108,7 +118,51 @@ export default function WatchlistPage() {
             <FiStar className="text-amber-400 text-2xl" />
             <h1 className="text-4xl md:text-5xl font-black tracking-tight">Watchlist</h1>
           </div>
-          <p className="text-gray-400 text-sm mb-10">Your saved tickers with live market data.</p>
+          <div className="flex items-center gap-3 mb-10">
+            <p className="text-gray-400 text-sm">Your saved tickers with live market data.</p>
+            {connected && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[9px] uppercase tracking-[0.2em] font-bold text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                </span>
+                Live
+              </span>
+            )}
+          </div>
+
+          {!loading && items.length > 0 && (() => {
+            const withPrice = items.filter((i) => i.quote && i.quote.c > 0);
+            const totalValue = withPrice.reduce((sum, i) => sum + (i.quote?.c ?? 0), 0);
+            const avgChange = withPrice.length > 0 ? withPrice.reduce((sum, i) => sum + (i.quote?.dp ?? 0), 0) / withPrice.length : 0;
+            const best = withPrice.length > 0 ? withPrice.reduce((a, b) => (a.quote?.dp ?? 0) > (b.quote?.dp ?? 0) ? a : b) : null;
+            const worst = withPrice.length > 0 ? withPrice.reduce((a, b) => (a.quote?.dp ?? 0) < (b.quote?.dp ?? 0) ? a : b) : null;
+
+            return (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl p-5">
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-1.5"><FiBarChart2 size={12} /> Tickers</p>
+                  <p className="mt-2 text-2xl font-black text-white">{items.length}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl p-5">
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">Avg Change</p>
+                  <p className={`mt-2 text-2xl font-black ${avgChange >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    {avgChange >= 0 ? "+" : ""}{avgChange.toFixed(2)}%
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl p-5">
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-1.5"><FiTrendingUp size={12} /> Best</p>
+                  <p className="mt-2 text-lg font-black text-emerald-400">{best?.symbol ?? "—"}</p>
+                  <p className="text-xs text-emerald-400/70">{best ? `+${(best.quote?.dp ?? 0).toFixed(2)}%` : ""}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl p-5">
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-1.5"><FiTrendingDown size={12} /> Worst</p>
+                  <p className="mt-2 text-lg font-black text-rose-400">{worst?.symbol ?? "—"}</p>
+                  <p className="text-xs text-rose-400/70">{worst ? `${(worst.quote?.dp ?? 0).toFixed(2)}%` : ""}</p>
+                </div>
+              </div>
+            );
+          })()}
 
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -135,7 +189,8 @@ export default function WatchlistPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {items.map((item) => {
-                const price = item.quote?.c ?? 0;
+                const livePrice = livePrices.get(item.symbol);
+                const price = livePrice?.price ?? item.quote?.c ?? 0;
                 const change = item.quote?.dp ?? 0;
                 const isPositive = change >= 0;
 
