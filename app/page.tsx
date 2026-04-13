@@ -948,6 +948,146 @@ function NewsCard({ item }: { item: NewsItem }) {
   );
 }
 
+const MARKET_INDICES = [
+  { symbol: "SPY", name: "S&P 500" },
+  { symbol: "QQQ", name: "NASDAQ" },
+  { symbol: "DIA", name: "DOW" },
+  { symbol: "IWM", name: "Russell 2K" },
+];
+
+const TOP_MOVERS = [
+  "AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSLA", "NFLX",
+];
+
+type MarketQuote = { symbol: string; name: string; c: number; dp: number; d: number };
+
+function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker: (s: string) => void; currSym: string; currConv: (n: number) => number }) {
+  const [indices, setIndices] = useState<MarketQuote[]>([]);
+  const [movers, setMovers] = useState<MarketQuote[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch indices
+        const idxData = await Promise.all(
+          MARKET_INDICES.map(async (idx) => {
+            const res = await fetch(`/api/quote?symbol=${encodeURIComponent(idx.symbol)}`);
+            if (!res.ok) return null;
+            const q = await res.json();
+            return q.c > 0 ? { symbol: idx.symbol, name: idx.name, c: q.c, dp: q.dp, d: q.d } as MarketQuote : null;
+          })
+        );
+
+        // Fetch top movers
+        const moverData = await Promise.all(
+          TOP_MOVERS.map(async (symbol) => {
+            const [qr, pr] = await Promise.all([
+              fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`),
+              fetch(`/api/company?symbol=${encodeURIComponent(symbol)}`),
+            ]);
+            if (!qr.ok) return null;
+            const q = await qr.json();
+            const p = pr.ok ? await pr.json() : {};
+            return q.c > 0 ? { symbol, name: p.name ?? symbol, c: q.c, dp: q.dp, d: q.d } as MarketQuote : null;
+          })
+        );
+
+        setIndices(idxData.filter(Boolean) as MarketQuote[]);
+        // Sort by absolute change to show biggest movers first
+        const sorted = (moverData.filter(Boolean) as MarketQuote[]).sort((a, b) => Math.abs(b.dp) - Math.abs(a.dp));
+        setMovers(sorted);
+      } catch {
+        // ignore
+      } finally {
+        setLoaded(true);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (!loaded) {
+    return (
+      <div className="mt-16 max-w-5xl mx-auto px-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 animate-pulse h-24" />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 animate-pulse h-20" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-16 max-w-5xl mx-auto px-4">
+      {/* Market Indices */}
+      {indices.length > 0 && (
+        <>
+          <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold mb-3 flex items-center gap-2">
+            <FiActivity size={12} /> Market Indices
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+            {indices.map((idx) => {
+              const isPos = idx.dp >= 0;
+              return (
+                <button
+                  key={idx.symbol}
+                  onClick={() => onSelectTicker(idx.symbol)}
+                  className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-4 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/5 group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-wider group-hover:text-blue-300 transition-colors">{idx.name}</p>
+                    <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${isPos ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+                      {isPos ? "+" : ""}{idx.dp.toFixed(2)}%
+                    </span>
+                  </div>
+                  <p className="text-xl font-black text-white">{currSym}{currConv(idx.c).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Top Movers */}
+      {movers.length > 0 && (
+        <>
+          <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold mb-3 flex items-center gap-2">
+            <FiTrendingUp size={12} /> Top Movers
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {movers.map((m) => {
+              const isPos = m.dp >= 0;
+              return (
+                <button
+                  key={m.symbol}
+                  onClick={() => onSelectTicker(m.symbol)}
+                  className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-4 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/5 group"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm font-black text-white group-hover:text-blue-300 transition-colors">{m.symbol}</p>
+                    <div className={`flex items-center gap-1 text-xs font-bold ${isPos ? "text-emerald-400" : "text-rose-400"}`}>
+                      {isPos ? <FiArrowUp size={10} /> : <FiArrowDown size={10} />}
+                      {isPos ? "+" : ""}{m.dp.toFixed(2)}%
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 truncate">{m.name}</p>
+                  <p className="text-sm font-bold text-gray-300 mt-1">{currSym}{currConv(m.c).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   return (
     <Suspense>
@@ -986,6 +1126,7 @@ function HomeContent() {
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
   const [earningsData, setEarningsData] = useState<EarningsItem[]>([]);
   const [priceTargetData, setPriceTargetData] = useState<PriceTargetData | null>(null);
+  const [livePrice, setLivePrice] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1068,6 +1209,36 @@ function HomeContent() {
       })
       .catch(() => {});
   }, [isSignedIn, ticker]);
+
+  // Live price via WebSocket — only for stock symbols (no crypto/forex via Finnhub WS on free tier)
+  useEffect(() => {
+    if (!stockData || !ticker || ticker.includes(":")) return;
+    setLivePrice(null);
+    let ws: WebSocket | null = null;
+    const connect = async () => {
+      try {
+        const res = await fetch("/api/ws-token");
+        const { token } = await res.json();
+        if (!token) return;
+        ws = new WebSocket(`wss://ws.finnhub.io?token=${token}`);
+        ws.onopen = () => ws?.send(JSON.stringify({ type: "subscribe", symbol: ticker }));
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "trade" && msg.data?.length > 0) {
+              const latest = msg.data[msg.data.length - 1];
+              setLivePrice(latest.p);
+            }
+          } catch {}
+        };
+      } catch {}
+    };
+    connect();
+    return () => { ws?.close(); };
+  }, [stockData, ticker]);
+
+  // Use live price when available
+  const displayPrice = livePrice ?? stockData?.c ?? 0;
 
   const isInWatchlist = ticker ? watchlist.includes(ticker) : false;
 
@@ -1646,39 +1817,13 @@ function HomeContent() {
               </div>
             )}
 
-            <div className="mt-12 flex flex-wrap justify-center items-center gap-6 md:gap-8 text-[10px] font-bold text-gray-600 uppercase tracking-[0.3em]">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-                </span>
-                NYSE
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-                NASDAQ
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-                </span>
-                CRYPTO
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-violet-500"></span>
-                </span>
-                FX
-              </div>
-            </div>
+            {!stockData && (
+              <MarketOverview
+                onSelectTicker={(s) => { setTicker(s); handleSearch(s); }}
+                currSym={cSym}
+                currConv={cConv}
+              />
+            )}
           </div>
         </main>
 
@@ -1946,11 +2091,20 @@ function HomeContent() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full 2xl:w-auto 2xl:min-w-[620px]">
                     <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 min-w-0 transition-all duration-200 hover:border-white/20 hover:bg-white/[0.06]">
-                      <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold">
+                      <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-2">
                         Price
+                        {livePrice != null && (
+                          <span className="inline-flex items-center gap-1 text-emerald-400">
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                            </span>
+                            LIVE
+                          </span>
+                        )}
                       </p>
                       <p className="mt-3 text-4xl md:text-5xl font-black tracking-tight break-all leading-tight animate-price-in">
-                        {formatPrice(stockData.c, analysis.assetType)}
+                        {formatPrice(displayPrice, analysis.assetType)}
                       </p>
                       <div
                         className={`mt-4 flex items-center gap-2 text-sm font-bold ${

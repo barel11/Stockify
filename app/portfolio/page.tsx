@@ -14,6 +14,7 @@ import {
   FiTrendingDown,
   FiPieChart,
   FiX,
+  FiUpload,
 } from "react-icons/fi";
 import Link from "next/link";
 import { useCurrency } from "@/lib/use-currency";
@@ -55,6 +56,8 @@ export default function PortfolioPage() {
   const [formShares, setFormShares] = useState("");
   const [formPrice, setFormPrice] = useState("");
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   // Autocomplete
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
@@ -161,6 +164,50 @@ export default function PortfolioPage() {
     }
   };
 
+  const handleCsvImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvImporting(true);
+    try {
+      const text = await file.text();
+      const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+      // Expect header: symbol,shares,buy_price (flexible order)
+      const header = lines[0].toLowerCase().split(",").map((h) => h.trim());
+      const symbolIdx = header.findIndex((h) => h.includes("symbol") || h.includes("ticker"));
+      const sharesIdx = header.findIndex((h) => h.includes("share") || h.includes("quantity") || h.includes("qty"));
+      const priceIdx = header.findIndex((h) => h.includes("price") || h.includes("cost") || h.includes("avg"));
+
+      if (symbolIdx === -1 || sharesIdx === -1 || priceIdx === -1) {
+        alert("CSV must have columns: symbol/ticker, shares/quantity, price/cost");
+        return;
+      }
+
+      let imported = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/"/g, ""));
+        const sym = cols[symbolIdx]?.toUpperCase();
+        const shares = parseFloat(cols[sharesIdx]);
+        const price = parseFloat(cols[priceIdx]);
+        if (!sym || !Number.isFinite(shares) || !Number.isFinite(price) || shares <= 0 || price <= 0) continue;
+
+        await fetch("/api/portfolio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: sym, shares, buyPrice: price, companyName: sym }),
+        });
+        imported++;
+      }
+
+      if (imported > 0) window.location.reload();
+      else alert("No valid rows found in CSV");
+    } catch {
+      alert("Failed to parse CSV file");
+    } finally {
+      setCsvImporting(false);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    }
+  };
+
   // Portfolio calculations
   const withPrice = holdings.filter((h) => h.quote && h.quote.c > 0);
   const totalInvested = withPrice.reduce((sum, h) => sum + h.buy_price * h.shares, 0);
@@ -189,13 +236,24 @@ export default function PortfolioPage() {
               <FiBriefcase className="text-blue-400 text-2xl" />
               <h1 className="text-4xl md:text-5xl font-black tracking-tight">Portfolio</h1>
             </div>
-            <button
-              onClick={() => setShowForm((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-blue-300 hover:bg-blue-500/20 transition-all"
-            >
-              {showForm ? <FiX /> : <FiPlus />}
-              {showForm ? "Cancel" : "Add Holding"}
-            </button>
+            <div className="flex items-center gap-2">
+              <input ref={csvInputRef} type="file" accept=".csv" onChange={handleCsvImport} className="hidden" />
+              <button
+                onClick={() => csvInputRef.current?.click()}
+                disabled={csvImporting}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-400 hover:text-white hover:border-white/20 transition-all disabled:opacity-50"
+              >
+                <FiUpload size={12} />
+                {csvImporting ? "Importing..." : "Import CSV"}
+              </button>
+              <button
+                onClick={() => setShowForm((v) => !v)}
+                className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-blue-300 hover:bg-blue-500/20 transition-all"
+              >
+                {showForm ? <FiX /> : <FiPlus />}
+                {showForm ? "Cancel" : "Add Holding"}
+              </button>
+            </div>
           </div>
           <p className="text-gray-400 text-sm mb-8">Track your investments with live P&L.</p>
 
