@@ -12,12 +12,8 @@ import {
   FiFilter,
   FiGrid,
   FiCalendar,
-  FiDollarSign,
-  FiSun,
-  FiMoon,
 } from "react-icons/fi";
 import { CURRENCIES, getSavedCurrency, saveCurrency, type Currency } from "@/lib/currency";
-import { useTheme } from "@/lib/use-theme";
 
 const NAV_LINKS = [
   { href: "/", label: "Search", icon: FiSearch },
@@ -51,7 +47,6 @@ function LogoSVG() {
 export default function Navbar() {
   const pathname = usePathname();
   const { isSignedIn } = useUser();
-  const { isDark, toggle: toggleTheme } = useTheme();
   const [currency, setCurrency] = useState<Currency>("USD");
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
 
@@ -78,9 +73,7 @@ export default function Navbar() {
         </Link>
 
         {/* Desktop nav pill */}
-        <nav className={`hidden lg:flex items-center rounded-full border p-1 gap-0.5 shadow-2xl backdrop-blur-2xl ${
-          isDark ? "border-white/10 bg-black/50" : "border-gray-200 bg-white/80"
-        }`}>
+        <nav className="hidden lg:flex items-center rounded-full border border-white/10 bg-black/50 p-1 gap-0.5 shadow-2xl backdrop-blur-2xl">
           {NAV_LINKS.map((link) => {
             const active = pathname === link.href;
             const Icon = link.icon;
@@ -90,8 +83,8 @@ export default function Navbar() {
                 href={link.href}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-bold tracking-wide transition-all ${
                   active
-                    ? isDark ? "bg-white/10 text-white" : "bg-blue-500/10 text-blue-600"
-                    : isDark ? "text-gray-400 hover:text-white hover:bg-white/[0.06]" : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                    ? "bg-white/10 text-white"
+                    : "text-gray-400 hover:text-white hover:bg-white/[0.06]"
                 }`}
               >
                 <Icon size={13} />
@@ -103,15 +96,6 @@ export default function Navbar() {
 
         {/* Auth + Currency */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Theme toggle */}
-          <button
-            onClick={toggleTheme}
-            className="rounded-full border border-white/10 bg-white/[0.05] dark:bg-white/[0.05] backdrop-blur-xl p-2.5 text-gray-400 hover:text-white hover:border-white/20 transition-all hidden sm:block"
-            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            {isDark ? <FiSun size={14} /> : <FiMoon size={14} />}
-          </button>
-
           {/* Currency selector */}
           <div className="relative hidden sm:block">
             <button
@@ -154,9 +138,7 @@ export default function Navbar() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className={`fixed bottom-0 left-0 right-0 z-50 lg:hidden border-t backdrop-blur-2xl safe-area-bottom ${
-        isDark ? "border-white/10 bg-black/80" : "border-gray-200 bg-white/90"
-      }`}>
+      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden border-t border-white/10 bg-black/80 backdrop-blur-2xl safe-area-bottom">
         <div className="flex items-center justify-around px-2 py-2">
           {NAV_LINKS.map((link) => {
             const active = pathname === link.href;

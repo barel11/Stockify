@@ -957,21 +957,15 @@ const MARKET_INDICES = [
   { symbol: "IWM", name: "Russell 2K" },
 ];
 
-const TOP_MOVERS = [
-  "AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSLA", "NFLX",
-];
-
 type MarketQuote = { symbol: string; name: string; c: number; dp: number; d: number };
 
 function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker: (s: string) => void; currSym: string; currConv: (n: number) => number }) {
   const [indices, setIndices] = useState<MarketQuote[]>([]);
-  const [movers, setMovers] = useState<MarketQuote[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch indices
         const idxData = await Promise.all(
           MARKET_INDICES.map(async (idx) => {
             const res = await fetch(`/api/quote?symbol=${encodeURIComponent(idx.symbol)}`);
@@ -980,25 +974,7 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
             return q.c > 0 ? { symbol: idx.symbol, name: idx.name, c: q.c, dp: q.dp, d: q.d } as MarketQuote : null;
           })
         );
-
-        // Fetch top movers
-        const moverData = await Promise.all(
-          TOP_MOVERS.map(async (symbol) => {
-            const [qr, pr] = await Promise.all([
-              fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`),
-              fetch(`/api/company?symbol=${encodeURIComponent(symbol)}`),
-            ]);
-            if (!qr.ok) return null;
-            const q = await qr.json();
-            const p = pr.ok ? await pr.json() : {};
-            return q.c > 0 ? { symbol, name: p.name ?? symbol, c: q.c, dp: q.dp, d: q.d } as MarketQuote : null;
-          })
-        );
-
         setIndices(idxData.filter(Boolean) as MarketQuote[]);
-        // Sort by absolute change to show biggest movers first
-        const sorted = (moverData.filter(Boolean) as MarketQuote[]).sort((a, b) => Math.abs(b.dp) - Math.abs(a.dp));
-        setMovers(sorted);
       } catch {
         // ignore
       } finally {
@@ -1011,14 +987,9 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
   if (!loaded) {
     return (
       <div className="mt-16 max-w-5xl mx-auto px-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 animate-pulse h-24" />
-          ))}
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 animate-pulse h-20" />
           ))}
         </div>
       </div>
@@ -1027,13 +998,12 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
 
   return (
     <div className="mt-16 max-w-5xl mx-auto px-4">
-      {/* Market Indices */}
       {indices.length > 0 && (
         <>
           <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold mb-3 flex items-center gap-2">
             <FiActivity size={12} /> Market Indices
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {indices.map((idx) => {
               const isPos = idx.dp >= 0;
               return (
@@ -1049,37 +1019,6 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
                     </span>
                   </div>
                   <p className="text-xl font-black text-white">{currSym}{currConv(idx.c).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* Top Movers */}
-      {movers.length > 0 && (
-        <>
-          <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold mb-3 flex items-center gap-2">
-            <FiTrendingUp size={12} /> Top Movers
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {movers.map((m) => {
-              const isPos = m.dp >= 0;
-              return (
-                <button
-                  key={m.symbol}
-                  onClick={() => onSelectTicker(m.symbol)}
-                  className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-4 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/5 group"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm font-black text-white group-hover:text-blue-300 transition-colors">{m.symbol}</p>
-                    <div className={`flex items-center gap-1 text-xs font-bold ${isPos ? "text-emerald-400" : "text-rose-400"}`}>
-                      {isPos ? <FiArrowUp size={10} /> : <FiArrowDown size={10} />}
-                      {isPos ? "+" : ""}{m.dp.toFixed(2)}%
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-gray-500 truncate">{m.name}</p>
-                  <p className="text-sm font-bold text-gray-300 mt-1">{currSym}{currConv(m.c).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </button>
               );
             })}

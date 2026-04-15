@@ -2,16 +2,15 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createChart, ColorType, CrosshairMode, LineSeries, CandlestickSeries } from "lightweight-charts";
-import { useTheme } from "@/lib/use-theme";
 
-type TimeRange = "1D" | "1W" | "1M" | "3M" | "1Y" | "5Y";
+type TimeRange = "1M" | "3M" | "6M" | "1Y" | "5Y";
 type ChartMode = "candle" | "line";
 
+// Finnhub free tier only supports D/W/M resolutions reliably, not intraday.
 const RANGES: { key: TimeRange; label: string; resolution: string; days: number }[] = [
-  { key: "1D", label: "1D", resolution: "5", days: 1 },
-  { key: "1W", label: "1W", resolution: "15", days: 7 },
-  { key: "1M", label: "1M", resolution: "60", days: 30 },
+  { key: "1M", label: "1M", resolution: "D", days: 30 },
   { key: "3M", label: "3M", resolution: "D", days: 90 },
+  { key: "6M", label: "6M", resolution: "D", days: 180 },
   { key: "1Y", label: "1Y", resolution: "D", days: 365 },
   { key: "5Y", label: "5Y", resolution: "W", days: 1825 },
 ];
@@ -24,10 +23,11 @@ type Props = {
 export default function HistoricalChart({ symbol, assetType }: Props) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [range, setRange] = useState<TimeRange>("3M");
   const [mode, setMode] = useState<ChartMode>("candle");
   const [loading, setLoading] = useState(false);
-  const { isDark } = useTheme();
+  const [error, setError] = useState<string | null>(null);
 
   const fetchAndRender = useCallback(async (selectedRange: TimeRange, chartMode: ChartMode) => {
     if (!chartContainerRef.current) return;
@@ -37,34 +37,41 @@ export default function HistoricalChart({ symbol, assetType }: Props) {
     const from = to - config.days * 86400;
 
     setLoading(true);
+    setError(null);
 
     try {
       const res = await fetch(
         `/api/candles?symbol=${encodeURIComponent(symbol)}&resolution=${config.resolution}&from=${from}&to=${to}&type=${assetType}`
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError("Unable to load chart data");
+        return;
+      }
       const data = await res.json();
 
-      if (data.s !== "ok" || !data.t?.length) return;
+      if (data.s !== "ok" || !data.t?.length) {
+        setError("No historical data available");
+        return;
+      }
 
-      // Destroy existing chart
+      // Tear down existing chart and observer
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
 
-      const bg = isDark ? "#0a0a0a" : "#f5f5f7";
-      const textColor = isDark ? "#6b7280" : "#9ca3af";
-      const gridColor = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.06)";
-
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
         height: 350,
-        layout: { background: { type: ColorType.Solid, color: bg }, textColor },
-        grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } },
+        layout: { background: { type: ColorType.Solid, color: "#0a0a0a" }, textColor: "#6b7280" },
+        grid: { vertLines: { color: "rgba(255,255,255,0.04)" }, horzLines: { color: "rgba(255,255,255,0.04)" } },
         crosshair: { mode: CrosshairMode.Magnet },
         rightPriceScale: { borderVisible: false },
-        timeScale: { borderVisible: false, timeVisible: selectedRange === "1D" || selectedRange === "1W" },
+        timeScale: { borderVisible: false, timeVisible: false },
       });
       chartRef.current = chart;
 
@@ -108,18 +115,21 @@ export default function HistoricalChart({ symbol, assetType }: Props) {
         }
       });
       resizeObserver.observe(chartContainerRef.current);
-
-      return () => resizeObserver.disconnect();
+      resizeObserverRef.current = resizeObserver;
     } catch {
-      // ignore
+      setError("Failed to load chart");
     } finally {
       setLoading(false);
     }
-  }, [symbol, assetType, isDark]);
+  }, [symbol, assetType]);
 
   useEffect(() => {
     fetchAndRender(range, mode);
     return () => {
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
@@ -168,10 +178,16 @@ export default function HistoricalChart({ symbol, assetType }: Props) {
           </button>
         </div>
       </div>
-      <div className="relative">
+      <div className="relative" style={{ minHeight: 350 }}>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10">
             <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {error && !loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 text-sm">
+            <div className="font-bold text-gray-400 mb-1">{error}</div>
+            <div className="text-xs text-gray-600">Try a different time range</div>
           </div>
         )}
         <div ref={chartContainerRef} />
