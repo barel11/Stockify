@@ -139,7 +139,7 @@ export default function BacktestPage() {
   return (
     <Background>
       <Navbar />
-      <main className="pt-24 pb-24 px-4 sm:px-6 max-w-7xl mx-auto relative z-10">
+      <main className="pt-24 pb-32 px-4 sm:px-6 max-w-7xl mx-auto relative z-10">
         <header className="mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-bold tracking-wider uppercase backdrop-blur-sm mb-3">
             <FiTarget /> Strategy Playground

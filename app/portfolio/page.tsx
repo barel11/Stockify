@@ -230,7 +230,7 @@ export default function PortfolioPage() {
     <Background>
       <Navbar />
 
-      <div className="relative z-10 pt-24 px-6 pb-32">
+      <div className="relative z-10 pt-24 px-4 sm:px-6 pb-32">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">

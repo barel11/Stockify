@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  lint-test-build:
+  lint-typecheck-test-build:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,8 +24,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Type check
+        run: npx tsc --noEmit
+
       - name: Run tests
-        run: npm run test:ci
+        run: npm run test:ci -- --coverage
 
       - name: Build
         run: npm run build

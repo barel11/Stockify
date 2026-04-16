@@ -184,7 +184,7 @@ export default function ScreenerPage() {
 
           {/* Filters */}
           <div className="rounded-3xl border border-white/10 bg-black/60 backdrop-blur-xl p-5 sm:p-6 shadow-2xl mb-8">
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
               <div>
                 <label className="block text-[9px] uppercase tracking-[0.28em] text-gray-500 font-bold mb-1.5">Min Price</label>
                 <input type="number" placeholder="$0" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm font-bold text-white placeholder:text-gray-600 focus:outline-none focus:border-blue-500/50 transition-all" />
@@ -229,7 +229,7 @@ export default function ScreenerPage() {
           ) : sorted.length > 0 ? (
             <div className="rounded-3xl border border-white/10 bg-black/60 backdrop-blur-xl shadow-2xl overflow-hidden">
               {/* Table header */}
-              <div className="hidden lg:grid grid-cols-[0.6fr_1.2fr_0.8fr_0.8fr_0.8fr_0.7fr_0.7fr_0.7fr] gap-2 px-6 py-3 border-b border-white/10 bg-white/[0.02]">
+              <div className="hidden lg:grid grid-cols-[0.6fr_1.2fr_0.8fr_0.8fr_0.8fr_0.7fr_0.7fr_0.7fr] gap-2 px-4 sm:px-6 py-3 border-b border-white/10 bg-white/[0.02]">
                 {([
                   ["symbol", "Symbol"],
                   ["symbol", "Company"],
@@ -259,7 +259,7 @@ export default function ScreenerPage() {
                   <Link
                     key={r.symbol}
                     href={`/?ticker=${encodeURIComponent(r.symbol)}`}
-                    className="grid grid-cols-2 lg:grid-cols-[0.6fr_1.2fr_0.8fr_0.8fr_0.8fr_0.7fr_0.7fr_0.7fr] gap-2 px-6 py-4 border-b border-white/5 last:border-0 hover:bg-white/[0.03] transition-colors items-center"
+                    className="grid grid-cols-[1fr_auto_auto] lg:grid-cols-[0.6fr_1.2fr_0.8fr_0.8fr_0.8fr_0.7fr_0.7fr_0.7fr] gap-2 px-4 sm:px-6 py-4 border-b border-white/5 last:border-0 hover:bg-white/[0.03] transition-colors items-center"
                   >
                     <p className="text-sm font-black text-white">{r.symbol}</p>
                     <p className="text-xs text-gray-400 truncate hidden lg:block">{r.profile?.name ?? "N/A"}</p>

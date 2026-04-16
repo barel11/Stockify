@@ -239,7 +239,7 @@ export default function HeatmapPage() {
                   return (
                     <div key={name} className="flex items-center gap-3">
                       <span className="text-base w-6 text-center">{SECTOR_ICONS[name] ?? "📊"}</span>
-                      <span className="text-xs font-bold text-gray-300 w-28 shrink-0">{name}</span>
+                      <span className="text-xs font-bold text-gray-300 w-20 sm:w-28 shrink-0 truncate">{name}</span>
                       <div className="flex-1 h-7 rounded-lg bg-white/[0.03] relative overflow-hidden flex items-center">
                         <div
                           className={`h-full rounded-lg transition-all duration-700 ease-out ${
@@ -261,8 +261,8 @@ export default function HeatmapPage() {
           )}
 
           {/* Legend */}
-          <div className="flex items-center justify-center gap-1.5 mb-6">
-            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mr-2">Bearish</span>
+          <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-6 flex-wrap">
+            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mr-1 sm:mr-2">Bearish</span>
             {[
               "from-rose-500/40 to-rose-500/40",
               "from-rose-500/30 to-rose-500/30",
@@ -275,9 +275,9 @@ export default function HeatmapPage() {
               "from-emerald-500/30 to-emerald-500/30",
               "from-emerald-500/40 to-emerald-500/40",
             ].map((gradient, i) => (
-              <div key={i} className={`bg-gradient-to-r ${gradient} w-7 h-4 ${i === 0 ? "rounded-l-full" : ""} ${i === 9 ? "rounded-r-full" : ""} border border-white/5`} />
+              <div key={i} className={`bg-gradient-to-r ${gradient} w-5 sm:w-7 h-3 sm:h-4 ${i === 0 ? "rounded-l-full" : ""} ${i === 9 ? "rounded-r-full" : ""} border border-white/5`} />
             ))}
-            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider ml-2">Bullish</span>
+            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider ml-1 sm:ml-2">Bullish</span>
           </div>
 
           {/* Heatmap Grid */}
