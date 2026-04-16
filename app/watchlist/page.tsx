@@ -125,7 +125,7 @@ export default function WatchlistPage() {
             const totalValue = withPrice.reduce((sum, i) => sum + (i.quote?.c ?? 0), 0);
             const avgChange = withPrice.length > 0 ? withPrice.reduce((sum, i) => sum + (i.quote?.dp ?? 0), 0) / withPrice.length : 0;
             const best = withPrice.length > 0 ? withPrice.reduce((a, b) => (a.quote?.dp ?? 0) > (b.quote?.dp ?? 0) ? a : b) : null;
-            const worst = withPrice.length > 0 ? withPrice.reduce((a, b) => (a.quote?.dp ?? 0) < (b.quote?.dp ?? 0) ? a : b) : null;
+            const worst = withPrice.length > 1 ? withPrice.reduce((a, b) => (a.quote?.dp ?? 0) < (b.quote?.dp ?? 0) ? a : b) : null;
 
             return (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -141,12 +141,12 @@ export default function WatchlistPage() {
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl p-5">
                   <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-1.5"><FiTrendingUp size={12} /> Best</p>
-                  <p className="mt-2 text-lg font-black text-emerald-400">{best?.symbol ?? "None yet"}</p>
+                  <p className="mt-2 text-lg font-black text-emerald-400">{best?.symbol ?? "—"}</p>
                   <p className="text-xs text-emerald-400/70">{best ? `+${(best.quote?.dp ?? 0).toFixed(2)}%` : ""}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/60 backdrop-blur-xl p-5">
                   <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold flex items-center gap-1.5"><FiTrendingDown size={12} /> Worst</p>
-                  <p className="mt-2 text-lg font-black text-rose-400">{worst?.symbol ?? "None yet"}</p>
+                  <p className="mt-2 text-lg font-black text-rose-400">{worst?.symbol ?? "—"}</p>
                   <p className="text-xs text-rose-400/70">{worst ? `${(worst.quote?.dp ?? 0).toFixed(2)}%` : ""}</p>
                 </div>
               </div>

@@ -610,9 +610,9 @@ function ComparisonTable({ left, right }: { left: TickerData; right: TickerData 
       icon: <FiTarget size={12} />,
       rows: [
         { label: "Buy %", a: buyPct(lRec) != null ? fmtPct(buyPct(lRec)) : "N/A", b: buyPct(rRec) != null ? fmtPct(buyPct(rRec)) : "N/A", winnerSide: winner(buyPct(lRec), buyPct(rRec)) },
-        { label: "Target Mean", a: f(lpt?.targetMean), b: f(rpt?.targetMean), winnerSide: null },
-        { label: "Target High", a: f(lpt?.targetHigh), b: f(rpt?.targetHigh), winnerSide: null },
-        { label: "Target Low", a: f(lpt?.targetLow), b: f(rpt?.targetLow), winnerSide: null },
+        { label: "Target Mean", a: f(lpt?.targetMean || undefined), b: f(rpt?.targetMean || undefined), winnerSide: null },
+        { label: "Target High", a: f(lpt?.targetHigh || undefined), b: f(rpt?.targetHigh || undefined), winnerSide: null },
+        { label: "Target Low", a: f(lpt?.targetLow || undefined), b: f(rpt?.targetLow || undefined), winnerSide: null },
       ],
     },
   ];
@@ -784,9 +784,11 @@ function PerformanceCompare({ symbolA, symbolB }: { symbolA: string; symbolB: st
       const resolution = days <= 30 ? "60" : "D";
 
       try {
+        const typeA = symbolA.includes(":") ? (symbolA.startsWith("OANDA:") ? "forex" : "crypto") : "stock";
+        const typeB = symbolB.includes(":") ? (symbolB.startsWith("OANDA:") ? "forex" : "crypto") : "stock";
         const [resA, resB] = await Promise.all([
-          fetch(`/api/candles?symbol=${encodeURIComponent(symbolA)}&resolution=${resolution}&from=${from}&to=${to}`).then((r) => r.json()),
-          fetch(`/api/candles?symbol=${encodeURIComponent(symbolB)}&resolution=${resolution}&from=${from}&to=${to}`).then((r) => r.json()),
+          fetch(`/api/candles?symbol=${encodeURIComponent(symbolA)}&resolution=${resolution}&from=${from}&to=${to}&type=${typeA}`).then((r) => r.json()),
+          fetch(`/api/candles?symbol=${encodeURIComponent(symbolB)}&resolution=${resolution}&from=${from}&to=${to}&type=${typeB}`).then((r) => r.json()),
         ]);
 
         if (resA.s === "ok" && resA.c?.length > 0) {

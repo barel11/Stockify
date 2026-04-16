@@ -71,6 +71,7 @@ export default function AIAnalyst({ symbol }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const run = async () => {
@@ -93,6 +94,11 @@ export default function AIAnalyst({ symbol }: Props) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: "Request failed" }));
+        if (res.status === 503) {
+          setHidden(true);
+          setLoading(false);
+          return;
+        }
         setError(data.error ?? `Request failed (${res.status})`);
         setLoading(false);
         return;
@@ -120,6 +126,8 @@ export default function AIAnalyst({ symbol }: Props) {
       setLoading(false);
     }
   };
+
+  if (hidden) return null;
 
   return (
     <div className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/[0.06] via-black/40 to-violet-500/[0.06] backdrop-blur-xl p-6">

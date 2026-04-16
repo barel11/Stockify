@@ -981,12 +981,11 @@ function PulseDot({ positive }: { positive: boolean }) {
 
 function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker: (s: string) => void; currSym: string; currConv: (n: number) => number }) {
   const [indices, setIndices] = useState<MarketQuote[]>([]);
-  const [movers, setMovers] = useState<MarketQuote[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [streaming, setStreaming] = useState(false);
   // Track prices that just changed so we can flash them briefly
   const [flashing, setFlashing] = useState<Set<string>>(new Set());
-  const lastSnapshot = useRef<{ indices: MarketQuote[]; movers: MarketQuote[] }>({ indices: [], movers: [] });
+  const lastSnapshot = useRef<{ indices: MarketQuote[] }>({ indices: [] });
 
   useEffect(() => {
     let es: EventSource | null = null;
@@ -998,11 +997,11 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
       es.onerror = () => setStreaming(false);
       es.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data) as { indices: MarketQuote[]; movers: MarketQuote[] };
+          const data = JSON.parse(event.data) as { indices: MarketQuote[] };
           const prev = lastSnapshot.current;
           const changed = new Set<string>();
-          [...data.indices, ...data.movers].forEach((q) => {
-            const prior = [...prev.indices, ...prev.movers].find((p) => p.symbol === q.symbol);
+          data.indices.forEach((q) => {
+            const prior = prev.indices.find((p) => p.symbol === q.symbol);
             if (prior && prior.c !== q.c) changed.add(q.symbol);
           });
           if (changed.size > 0) {
@@ -1012,7 +1011,6 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
           }
           lastSnapshot.current = data;
           setIndices(data.indices);
-          setMovers(data.movers);
           setLoaded(true);
         } catch {
           // ignore malformed message
@@ -1034,11 +1032,6 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 animate-pulse h-24" />
-          ))}
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 animate-pulse h-20" />
           ))}
         </div>
       </div>
@@ -1082,39 +1075,6 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
         </>
       )}
 
-      {/* Top Movers */}
-      {movers.length > 0 && (
-        <>
-          <p className="text-[10px] uppercase tracking-[0.28em] text-gray-500 font-bold mb-3 flex items-center gap-2">
-            <FiTrendingUp size={12} /> Top Movers
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {movers.map((m) => {
-              const isPos = m.dp >= 0;
-              return (
-                <button
-                  key={m.symbol}
-                  onClick={() => onSelectTicker(m.symbol)}
-                  className={`rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-4 text-left hover:border-blue-500/30 hover:bg-blue-500/5 group ${priceFlashClass(m.symbol)}`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm font-black text-white group-hover:text-blue-300 transition-colors flex items-center gap-1.5">
-                      <PulseDot positive={isPos} />
-                      {m.symbol}
-                    </p>
-                    <div className={`flex items-center gap-1 text-xs font-bold ${isPos ? "text-emerald-400" : "text-rose-400"}`}>
-                      {isPos ? <FiArrowUp size={10} /> : <FiArrowDown size={10} />}
-                      {isPos ? "+" : ""}{m.dp.toFixed(2)}%
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-gray-500 truncate">{m.name}</p>
-                  <p className="text-sm font-bold text-gray-300 mt-1">{currSym}{currConv(m.c).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
     </div>
   );
 }

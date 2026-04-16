@@ -93,16 +93,23 @@ export default function HeatmapPage() {
     setLoading(true);
     setLoadProgress(0);
     try {
-      const BATCH = 8;
+      const BATCH = 5;
       const results: SectorStock[] = [];
       for (let i = 0; i < SECTOR_STOCKS.length; i += BATCH) {
-        if (i > 0) await new Promise((r) => setTimeout(r, 1200));
+        if (i > 0) await new Promise((r) => setTimeout(r, 1500));
         const batch = SECTOR_STOCKS.slice(i, i + BATCH);
         const batchResults = await Promise.all(
           batch.map(async (s) => {
             try {
               const res = await fetch(`/api/quote?symbol=${encodeURIComponent(s.symbol)}`);
-              const quote = res.ok ? ((await res.json()) as QuoteData) : null;
+              if (!res.ok) {
+                // Retry once after a short delay
+                await new Promise((r) => setTimeout(r, 800));
+                const retry = await fetch(`/api/quote?symbol=${encodeURIComponent(s.symbol)}`);
+                const quote = retry.ok ? ((await retry.json()) as QuoteData) : null;
+                return { ...s, quote };
+              }
+              const quote = (await res.json()) as QuoteData;
               return { ...s, quote };
             } catch {
               return { ...s, quote: null };
@@ -334,14 +341,18 @@ export default function HeatmapPage() {
                               {isPositive ? <FiArrowUp size={10} className="text-emerald-400" /> : <FiArrowDown size={10} className="text-rose-400" />}
                             </div>
                           </div>
-                          {price > 0 && (
-                            <div className="mt-3">
-                              <p className="text-lg font-black text-white/90">{cSym}{cConv(price).toFixed(2)}</p>
-                              <p className={`text-xs font-bold mt-0.5 ${isPositive ? "text-emerald-400" : "text-rose-400"}`}>
-                                {isPositive ? "+" : ""}{dp.toFixed(2)}%
-                              </p>
-                            </div>
-                          )}
+                          <div className="mt-3">
+                            {price > 0 ? (
+                              <>
+                                <p className="text-lg font-black text-white/90">{cSym}{cConv(price).toFixed(2)}</p>
+                                <p className={`text-xs font-bold mt-0.5 ${isPositive ? "text-emerald-400" : "text-rose-400"}`}>
+                                  {isPositive ? "+" : ""}{dp.toFixed(2)}%
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-sm text-gray-600">Loading...</p>
+                            )}
+                          </div>
                           <div className={`absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-br ${isPositive ? "from-emerald-500/5 to-transparent" : "from-rose-500/5 to-transparent"}`} />
                         </Link>
                       );

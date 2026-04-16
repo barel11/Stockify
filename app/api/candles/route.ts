@@ -14,7 +14,12 @@ export async function GET(req: NextRequest) {
   if (!to) return NextResponse.json({ error: "Missing to" }, { status: 400 });
 
   const endpoint = type === "forex" ? "/forex/candle" : type === "crypto" ? "/crypto/candle" : "/stock/candle";
-  const data = await finnhubFetch(endpoint, { symbol, resolution, from, to });
+  let data = await finnhubFetch(endpoint, { symbol, resolution, from, to });
+  // Retry once if rate-limited
+  if (!data) {
+    await new Promise((r) => setTimeout(r, 1200));
+    data = await finnhubFetch(endpoint, { symbol, resolution, from, to });
+  }
   if (!data) return NextResponse.json({ error: "Failed to fetch" }, { status: 502 });
   return NextResponse.json(data);
 }

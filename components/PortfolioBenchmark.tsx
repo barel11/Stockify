@@ -79,22 +79,27 @@ export default function PortfolioBenchmark({ holdings }: { holdings: Holding[] }
       const from = to - DAYS * 86400;
 
       try {
-        const targets = [...holdings.map((h) => ({ symbol: h.symbol, type: "stock" })), { symbol: "SPY", type: "stock" }];
-        const results = await Promise.all(
-          targets.map(async (t) => {
+        // Fetch SPY first, then holdings sequentially to avoid rate limits
+        const targets = [{ symbol: "SPY", type: "stock" }, ...holdings.map((h) => ({ symbol: h.symbol, type: "stock" }))];
+        const results: (Candle | null)[] = [];
+        for (const t of targets) {
+          if (results.length > 0) await new Promise((r) => setTimeout(r, 300));
+          try {
             const res = await fetch(
               `/api/candles?symbol=${encodeURIComponent(t.symbol)}&resolution=D&from=${from}&to=${to}&type=${t.type}`
             );
-            if (!res.ok) return null;
+            if (!res.ok) { results.push(null); continue; }
             const data = (await res.json()) as Candle;
-            return data.s === "ok" ? data : null;
-          })
-        );
+            results.push(data.s === "ok" ? data : null);
+          } catch {
+            results.push(null);
+          }
+        }
 
         if (cancelled) return;
 
-        const holdingCandles = results.slice(0, holdings.length);
-        const spyCandle = results[holdings.length];
+        const spyCandle = results[0];
+        const holdingCandles = results.slice(1);
 
         if (!spyCandle || !spyCandle.t.length) {
           setError("S&P 500 data unavailable");

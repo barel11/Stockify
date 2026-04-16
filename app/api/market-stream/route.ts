@@ -13,10 +13,8 @@ const INDICES = [
   { symbol: "IWM", name: "Russell 2K" },
 ];
 
-const MOVERS = ["AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSLA", "NFLX"];
-
 // Interval between pushes (ms). Keep it modest to stay under Finnhub's 60 req/min.
-const TICK_MS = 15_000;
+const TICK_MS = 10_000;
 
 async function snapshot() {
   const idxData = await Promise.all(
@@ -27,15 +25,8 @@ async function snapshot() {
         : null;
     })
   );
-  const moverData = await Promise.all(
-    MOVERS.map(async (sym) => {
-      const q = await finnhubFetch<QuoteData>("/quote", { symbol: sym }).catch(() => null);
-      return q && q.c > 0 ? { symbol: sym, name: sym, c: q.c, dp: q.dp, d: q.d } : null;
-    })
-  );
   return {
     indices: idxData.filter(Boolean),
-    movers: (moverData.filter(Boolean) as { dp: number }[]).sort((a, b) => Math.abs(b.dp) - Math.abs(a.dp)),
     ts: Date.now(),
   };
 }

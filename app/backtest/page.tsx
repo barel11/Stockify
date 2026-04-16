@@ -52,11 +52,15 @@ export default function BacktestPage() {
     setResult(null);
     const to = Math.floor(Date.now() / 1000);
     const from = to - rangeDays * 86400;
-    const res = await fetch(
-      `/api/candles?symbol=${encodeURIComponent(symbol.toUpperCase())}&resolution=D&from=${from}&to=${to}&type=stock`
-    );
+    const url = `/api/candles?symbol=${encodeURIComponent(symbol.toUpperCase())}&resolution=D&from=${from}&to=${to}&type=stock`;
+    let res = await fetch(url);
+    // Retry once if rate-limited
     if (!res.ok) {
-      setError("Could not load candles");
+      await new Promise((r) => setTimeout(r, 1500));
+      res = await fetch(url);
+    }
+    if (!res.ok) {
+      setError("Could not load candles — API may be rate-limited. Try again in a moment.");
       setLoading(false);
       return;
     }

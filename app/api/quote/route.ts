@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const data = await cachedFetch(
     `quote:${symbol}`,
     () => finnhubFetch("/quote", { symbol }),
-    30 // 30s TTL for quotes
+    15 // 15s TTL for quotes
   );
   if (!data) return NextResponse.json({ error: "Failed to fetch" }, { status: 502 });
   return NextResponse.json(data);

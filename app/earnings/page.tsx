@@ -62,7 +62,11 @@ export default function EarningsPage() {
     fetch(`/api/earnings-calendar?from=${week.from}&to=${week.to}`)
       .then((r) => r.json())
       .then((data) => {
-        setEntries(data.earningsCalendar ?? []);
+        const all: EarningsEntry[] = data.earningsCalendar ?? [];
+        // Filter to entries that have EPS estimates (filters out micro-caps with no coverage)
+        // and limit to 15 per day to keep the UI manageable
+        const filtered = all.filter((e) => e.epsEstimate != null || e.revenueEstimate != null);
+        setEntries(filtered);
       })
       .catch(() => setEntries([]))
       .finally(() => setLoading(false));
@@ -172,8 +176,8 @@ export default function EarningsPage() {
                     {day.entries.length === 0 ? (
                       <p className="text-xs text-gray-600 text-center py-4">No earnings</p>
                     ) : (
-                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                        {day.entries.map((e, i) => (
+                      <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 scrollbar-thin">
+                        {day.entries.slice(0, 20).map((e, i) => (
                           <Link
                             key={`${e.symbol}-${i}`}
                             href={`/?ticker=${encodeURIComponent(e.symbol)}`}
@@ -228,6 +232,11 @@ export default function EarningsPage() {
                             )}
                           </Link>
                         ))}
+                        {day.entries.length > 20 && (
+                          <p className="text-[10px] text-gray-600 text-center py-2">
+                            +{day.entries.length - 20} more
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
