@@ -1,27 +1,58 @@
 import type { NextRequest } from "next/server";
-import { finnhubFetch } from "@/lib/finnhub";
-
-type QuoteData = { c: number; d: number; dp: number };
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const INDICES = [
-  { symbol: "SPY", name: "S&P 500" },
-  { symbol: "QQQ", name: "NASDAQ" },
-  { symbol: "DIA", name: "DOW" },
-  { symbol: "IWM", name: "Russell 2K" },
+  { yahoo: "^GSPC", name: "S&P 500" },
+  { yahoo: "^IXIC", name: "NASDAQ" },
+  { yahoo: "^DJI", name: "DOW" },
+  { yahoo: "^RUT", name: "Russell 2K" },
 ];
 
-// Interval between pushes (ms). Keep it modest to stay under Finnhub's 60 req/min.
+// Interval between pushes (ms)
 const TICK_MS = 10_000;
+
+type YahooChart = {
+  chart: {
+    result?: {
+      meta: {
+        symbol: string;
+        regularMarketPrice?: number;
+        chartPreviousClose?: number;
+        previousClose?: number;
+      };
+    }[];
+  };
+};
+
+async function fetchYahooQuote(yahooSymbol: string) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=1d&interval=1d`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as YahooChart;
+    const meta = data.chart?.result?.[0]?.meta;
+    if (!meta || !meta.regularMarketPrice) return null;
+    const price = meta.regularMarketPrice;
+    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? price;
+    const change = price - prevClose;
+    const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
+    return { c: price, d: change, dp: changePct };
+  } catch {
+    return null;
+  }
+}
 
 async function snapshot() {
   const idxData = await Promise.all(
     INDICES.map(async (idx) => {
-      const q = await finnhubFetch<QuoteData>("/quote", { symbol: idx.symbol }).catch(() => null);
-      return q && q.c > 0
-        ? { symbol: idx.symbol, name: idx.name, c: q.c, dp: q.dp, d: q.d }
+      const q = await fetchYahooQuote(idx.yahoo);
+      return q
+        ? { symbol: idx.yahoo, name: idx.name, c: q.c, dp: q.dp, d: q.d }
         : null;
     })
   );

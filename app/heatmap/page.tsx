@@ -93,33 +93,14 @@ export default function HeatmapPage() {
     setLoading(true);
     setLoadProgress(0);
     try {
-      const BATCH = 5;
-      const results: SectorStock[] = [];
-      for (let i = 0; i < SECTOR_STOCKS.length; i += BATCH) {
-        if (i > 0) await new Promise((r) => setTimeout(r, 1500));
-        const batch = SECTOR_STOCKS.slice(i, i + BATCH);
-        const batchResults = await Promise.all(
-          batch.map(async (s) => {
-            try {
-              const res = await fetch(`/api/quote?symbol=${encodeURIComponent(s.symbol)}`);
-              if (!res.ok) {
-                // Retry once after a short delay
-                await new Promise((r) => setTimeout(r, 800));
-                const retry = await fetch(`/api/quote?symbol=${encodeURIComponent(s.symbol)}`);
-                const quote = retry.ok ? ((await retry.json()) as QuoteData) : null;
-                return { ...s, quote };
-              }
-              const quote = (await res.json()) as QuoteData;
-              return { ...s, quote };
-            } catch {
-              return { ...s, quote: null };
-            }
-          })
-        );
-        results.push(...batchResults);
-        setStocks([...results]);
-        setLoadProgress(Math.round((results.length / SECTOR_STOCKS.length) * 100));
-      }
+      const symbols = SECTOR_STOCKS.map((s) => s.symbol).join(",");
+      const res = await fetch(`/api/batch-quote?symbols=${encodeURIComponent(symbols)}`);
+      if (!res.ok) throw new Error("Batch quote failed");
+      const data = (await res.json()) as Record<string, QuoteData | null>;
+      const results: SectorStock[] = SECTOR_STOCKS.map((s) => ({
+        ...s,
+        quote: data[s.symbol] ?? null,
+      }));
       setStocks(results);
     } catch {
       setStocks(SECTOR_STOCKS.map((s) => ({ ...s, quote: null })));

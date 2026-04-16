@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { finnhubFetch } from "@/lib/finnhub";
-import { cachedFetch } from "@/lib/cache";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type YahooChart = {
   chart: {
     result?: {
       meta: {
+        symbol: string;
         regularMarketPrice?: number;
         chartPreviousClose?: number;
         previousClose?: number;
@@ -14,7 +16,7 @@ type YahooChart = {
   };
 };
 
-async function yahooFallback(symbol: string) {
+async function fetchYahooQuote(symbol: string): Promise<{ c: number; d: number; dp: number } | null> {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
     const res = await fetch(url, {
@@ -36,20 +38,20 @@ async function yahooFallback(symbol: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const symbol = req.nextUrl.searchParams.get("symbol");
-  if (!symbol) return NextResponse.json({ error: "Missing symbol" }, { status: 400 });
+  const symbolsParam = req.nextUrl.searchParams.get("symbols");
+  if (!symbolsParam) {
+    return NextResponse.json({ error: "Missing symbols parameter" }, { status: 400 });
+  }
 
-  const data = await cachedFetch(
-    `quote:${symbol}`,
-    async () => {
-      const finnhub = await finnhubFetch("/quote", { symbol }) as { c?: number; d?: number; dp?: number } | null;
-      // If Finnhub returns valid data, use it
-      if (finnhub && finnhub.c && finnhub.c > 0) return finnhub;
-      // Fall back to Yahoo Finance
-      return yahooFallback(symbol);
-    },
-    15 // 15s TTL for quotes
+  const symbols = symbolsParam.split(",").slice(0, 50); // cap at 50
+  const results: Record<string, { c: number; d: number; dp: number } | null> = {};
+
+  // Fetch all in parallel — Yahoo has no rate limits
+  await Promise.all(
+    symbols.map(async (sym) => {
+      results[sym] = await fetchYahooQuote(sym);
+    })
   );
-  if (!data) return NextResponse.json({ error: "Failed to fetch" }, { status: 502 });
-  return NextResponse.json(data);
+
+  return NextResponse.json(results);
 }

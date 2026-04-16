@@ -949,13 +949,6 @@ function NewsCard({ item }: { item: NewsItem }) {
   );
 }
 
-const MARKET_INDICES = [
-  { symbol: "SPY", name: "S&P 500" },
-  { symbol: "QQQ", name: "NASDAQ" },
-  { symbol: "DIA", name: "DOW" },
-  { symbol: "IWM", name: "Russell 2K" },
-];
-
 type MarketQuote = { symbol: string; name: string; c: number; dp: number; d: number; prevC?: number };
 
 function PulseDot({ positive }: { positive: boolean }) {
@@ -1036,6 +1029,9 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
 
   const priceFlashClass = (sym: string) => flashing.has(sym) ? "bg-blue-500/10 ring-1 ring-blue-500/40 transition-all" : "transition-all";
 
+  // Map index symbols to their ETF equivalents for search
+  const indexToEtf: Record<string, string> = { "^GSPC": "SPY", "^IXIC": "QQQ", "^DJI": "DIA", "^RUT": "IWM" };
+
   return (
     <div className="mt-16 max-w-5xl mx-auto px-4">
       {/* Market Indices */}
@@ -1051,7 +1047,7 @@ function MarketOverview({ onSelectTicker, currSym, currConv }: { onSelectTicker:
               return (
                 <button
                   key={idx.symbol}
-                  onClick={() => onSelectTicker(idx.symbol)}
+                  onClick={() => onSelectTicker(indexToEtf[idx.symbol] ?? idx.symbol)}
                   className={`rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-4 text-left hover:border-blue-500/30 hover:bg-blue-500/5 group ${priceFlashClass(idx.symbol)}`}
                 >
                   <div className="flex items-center justify-between mb-2">
