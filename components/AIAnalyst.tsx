@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { FiZap, FiLoader, FiRefreshCw } from "react-icons/fi";
 
 type Props = { symbol: string };
@@ -72,7 +72,21 @@ export default function AIAnalyst({ symbol }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const checkedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Check on mount whether the API is configured
+  useEffect(() => {
+    if (checkedRef.current) return;
+    checkedRef.current = true;
+    fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol: "__check__" }),
+    }).then((res) => {
+      if (res.status === 503) setHidden(true);
+    }).catch(() => {});
+  }, []);
 
   const run = async () => {
     abortRef.current?.abort();

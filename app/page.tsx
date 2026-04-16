@@ -956,10 +956,6 @@ const MARKET_INDICES = [
   { symbol: "IWM", name: "Russell 2K" },
 ];
 
-const TOP_MOVERS = [
-  "AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSLA", "NFLX",
-];
-
 type MarketQuote = { symbol: string; name: string; c: number; dp: number; d: number; prevC?: number };
 
 function PulseDot({ positive }: { positive: boolean }) {
